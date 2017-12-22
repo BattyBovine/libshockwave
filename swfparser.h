@@ -26,9 +26,11 @@ namespace SWF
 	enum Error
 	{
 		OK,
-		NULL_DATA,
-		DATA_INVALID,
-		COMPRESSION_VERSION_MISMATCH,
+		SWF_NULL_DATA,
+		SWF_DATA_INVALID,
+		SWF_COMPRESSION_VERSION_MISMATCH,
+		SWF_FILE_PROTECTED,
+		SWF_FILE_ENCRYPTED,
 
 		ZLIB_NOT_COMPILED,
 		ZLIB_ERRNO,
@@ -120,11 +122,22 @@ namespace SWF
 		uint32_t datalength;
 		uint8_t swfversion;
 		uint32_t pos;
-		uint8_t bits_pending;
+		uint8_t bits_pending : 4;
 		uint8_t partial_byte;
 		const uint8_t bitmasks[9] = {0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF};
 
 		Dictionary dictionary;
+
+		FillStyle inline readFILLSTYLE(uint16_t);
+		void inline readFILLSTYLEARRAY(uint16_t);
+		LineStyle inline readLINESTYLE(uint16_t);
+		LineStyle inline readLINESTYLE2(uint16_t);
+		void inline readLINESTYLEARRAY(uint16_t);
+		Gradient inline readGRADIENT(uint16_t);
+		FocalGradient inline readFOCALGRADIENT(uint16_t);
+		GradRecord inline readGRADRECORD(uint16_t);
+		Vertex inline readSHAPERECORDedge(ShapeRecordType, uint8_t);
+		StyleChangeRecord inline readSHAPERECORDstylechange(uint16_t, uint8_t);
 
 	public:
 		Stream(uint8_t*,uint32_t);
@@ -134,24 +147,18 @@ namespace SWF
 		void inline rewind(){pos=0;}
 		void inline reset_bits_pending(){bits_pending=0;}
 
-		RecordHeader readRECORDHEADER();
-		FillStyle readFILLSTYLE(uint16_t);
-		LineStyle readLINESTYLE(uint16_t);
-		LineStyle2 readLINESTYLE2(uint16_t);
-		ShapeRecordArray readSHAPEWITHSTYLE(uint16_t);
-		Gradient readGRADIENT(uint16_t);
-		FocalGradient readFOCALGRADIENT(uint16_t);
-		GradRecord readGRADRECORD(uint16_t);
-		ShapeRecord readSHAPERECORD(uint16_t, uint8_t, uint8_t);
+		RecordHeader inline readRECORDHEADER();
+		Shape inline readSHAPEWITHSTYLE(uint16_t, uint16_t);
+		void inline readFILTERLIST();
 
-		Rect readRECT();
-		RGBA readRGB();
-		RGBA readRGBA();
-		RGBA readARGB();
-		Matrix readMATRIX();
-		CXForm readCXFORM(bool alpha=false);
+		Rect inline readRECT();
+		RGBA inline readRGB();
+		RGBA inline readRGBA();
+		RGBA inline readARGB();
+		Matrix inline readMATRIX();
+		CXForm inline readCXFORM(bool alpha=false);
 		CXForm inline readCXFORMWITHALPHA() { return readCXFORM(true); }
-		ClipActions readCLIPACTIONS();
+		ClipActions inline readCLIPACTIONS();
 
 		int8_t inline readSI8();
 		int16_t inline readSI16();
@@ -168,14 +175,15 @@ namespace SWF
 		float inline readFIXED8();
 		const char inline *readSTRING();
 
-		int32_t readSB(uint8_t);
-		uint32_t readUB(uint8_t);
-		float readFB(uint8_t);
+		int32_t inline readSB(uint8_t);
+		uint32_t inline readUB(uint8_t);
+		float inline readFB(uint8_t);
 
 		uint8_t inline readByte();
-		uint64_t readBytesAligned(uint8_t);
-		uint32_t readBits(uint8_t);
-		uint32_t readEncodedU32();
+		uint64_t inline readBytesAligned(uint8_t);
+		uint64_t inline readBytesAlignedBigEndian(uint8_t);
+		uint32_t inline readBits(uint8_t);
+		uint32_t inline readEncodedU32();
 	};
 
 	class Parser
@@ -185,7 +193,7 @@ namespace SWF
 		Error tag_loop(Stream*);
 
 	public:
-		Error parse_swf_data(uint8_t*, uint32_t);
+		Error parse_swf_data(uint8_t*, uint32_t, const char *password="");
 	};
 	
 }

@@ -10,37 +10,38 @@ using namespace SWF;
 #include "lzma/LzmaLib.h"
 #endif
 
-Error Parser::parse_swf_data(uint8_t *data, uint32_t bytes)
+Error Parser::parse_swf_data(uint8_t *data, uint32_t bytes, const char *password)
 {
 	if(!data)
-		return Error::NULL_DATA;
+		return Error::SWF_NULL_DATA;
 
-	uint32_t length =
+	size_t datalength = (
 		data[Header::FILESIZE_32] |
 		data[Header::FILESIZE_32+1]<<8 |
 		data[Header::FILESIZE_32+2]<<16 |
-		data[Header::FILESIZE_32+3]<<24;
-	size_t datalength = (length-Header::LENGTH);
+		data[Header::FILESIZE_32+3]<<24
+		) - Header::LENGTH;
 
 	if(data[Header::SIGNATURE+1] != 'W' || data[Header::SIGNATURE+2] != 'S')
-		return Error::DATA_INVALID;
+		return Error::SWF_DATA_INVALID;
 
 	Stream *swfstream;
+	movieprops.version = (data[Header::VERSION]);
 	switch(data[Header::SIGNATURE]) {
 	case 'C':	// zlib compression
 	{
 		#ifndef LIBSHOCKWAVE_DISABLE_ZLIB
-		if(data[Header::VERSION] < 6)	return Error::COMPRESSION_VERSION_MISMATCH;	// invalid if below SWF6
+		//if(data[Header::VERSION] < 6)	return Error::SWF_COMPRESSION_VERSION_MISMATCH;	// invalid if below SWF6
 		uLong zliblen = (uLong)(bytes-Header::LENGTH);
 		uint8_t *swfdecompressed = (uint8_t*)malloc(datalength);
 		int zliberror = uncompress2(swfdecompressed, (uLong*)&datalength, &data[Header::LENGTH], &zliblen);
 		switch(zliberror) {
-		case Z_ERRNO:			return Error::ZLIB_ERRNO;
-		case Z_STREAM_ERROR:	return Error::ZLIB_STREAM_ERROR;
-		case Z_DATA_ERROR:		return Error::ZLIB_DATA_ERROR;
-		case Z_MEM_ERROR:		return Error::ZLIB_MEMORY_ERROR;
-		case Z_BUF_ERROR:		return Error::ZLIB_BUFFER_ERROR;
-		case Z_VERSION_ERROR:	return Error::ZLIB_VERSION_ERROR;
+			case Z_ERRNO:			return Error::ZLIB_ERRNO;
+			case Z_STREAM_ERROR:	return Error::ZLIB_STREAM_ERROR;
+			case Z_DATA_ERROR:		return Error::ZLIB_DATA_ERROR;
+			case Z_MEM_ERROR:		return Error::ZLIB_MEMORY_ERROR;
+			case Z_BUF_ERROR:		return Error::ZLIB_BUFFER_ERROR;
+			case Z_VERSION_ERROR:	return Error::ZLIB_VERSION_ERROR;
 		}
 		swfstream = new Stream(swfdecompressed, datalength);
 		break;
@@ -51,7 +52,7 @@ Error Parser::parse_swf_data(uint8_t *data, uint32_t bytes)
 	case 'Z':	// lzma compression
 	{
 		#ifndef LIBSHOCKWAVE_DISABLE_LZMA
-		if(data[Header::VERSION] < 13)	return Error::COMPRESSION_VERSION_MISMATCH;	// invalid if below SWF13
+		//if(data[Header::VERSION] < 13)	return Error::SWF_COMPRESSION_VERSION_MISMATCH;	// invalid if below SWF13
 		size_t lzmalen =
 			data[Header::LENGTH] |
 			data[Header::LENGTH+1]<<8 |
@@ -60,10 +61,10 @@ Error Parser::parse_swf_data(uint8_t *data, uint32_t bytes)
 		uint8_t *swfdecompressed = (uint8_t*)malloc(datalength);
 		SRes lzmaerror = LzmaUncompress(swfdecompressed, &datalength, &data[Header::LZMA_LENGTH+LZMA_PROPS_SIZE], &lzmalen, &data[Header::LZMA_LENGTH], LZMA_PROPS_SIZE);
 		switch(lzmaerror) {
-		case SZ_ERROR_DATA:			return Error::LZMA_DATA_ERROR;
-		case SZ_ERROR_MEM:			return Error::LZMA_MEM_ALLOC_ERROR;
-		case SZ_ERROR_UNSUPPORTED:	return Error::LZMA_INVALID_PROPS;
-		case SZ_ERROR_INPUT_EOF:	return Error::LZMA_UNEXPECTED_EOF;
+			case SZ_ERROR_DATA:			return Error::LZMA_DATA_ERROR;
+			case SZ_ERROR_MEM:			return Error::LZMA_MEM_ALLOC_ERROR;
+			case SZ_ERROR_UNSUPPORTED:	return Error::LZMA_INVALID_PROPS;
+			case SZ_ERROR_INPUT_EOF:	return Error::LZMA_UNEXPECTED_EOF;
 		}
 		swfstream = new Stream(swfdecompressed, datalength);
 		break;
@@ -79,10 +80,9 @@ Error Parser::parse_swf_data(uint8_t *data, uint32_t bytes)
 	movieprops.framerate = swfstream->readFIXED8();
 	movieprops.framecount = swfstream->readUI16();
 
-	this->tag_loop(swfstream);
-
+	Error error = this->tag_loop(swfstream);
 	if(swfstream)	delete swfstream;
-	return Error::OK;
+	return error;
 }
 
 Error Parser::tag_loop(Stream *swfstream)
@@ -97,7 +97,7 @@ Error Parser::tag_loop(Stream *swfstream)
 			{
 				uint16_t shapeid = swfstream->readUI16();
 				Rect shapebounds = swfstream->readRECT();
-				swfstream->readSHAPEWITHSTYLE(rh.tag);
+				swfstream->readSHAPEWITHSTYLE(shapeid, rh.tag);
 				break;
 			}
 			case TagType::DefineShape4:
@@ -109,7 +109,7 @@ Error Parser::tag_loop(Stream *swfstream)
 				bool usesfillwindingrule = swfstream->readUB(1);
 				bool usesnonscalingstrokes = swfstream->readUB(1);
 				bool usesscalingstrokes = swfstream->readUB(1);
-				swfstream->readSHAPEWITHSTYLE(rh.tag);
+				swfstream->readSHAPEWITHSTYLE(shapeid, rh.tag);
 				break;
 			}
 			case TagType::PlaceObject:
@@ -120,8 +120,10 @@ Error Parser::tag_loop(Stream *swfstream)
 				Matrix matrix = swfstream->readMATRIX();
 				readlength = (swfstream->get_pos()-readlength);
 				if((rh.length-readlength)>0)	swfstream->readCXFORM();
+				break;
 			}
 			case TagType::PlaceObject2:
+			case TagType::PlaceObject3:
 			{
 				int readlength = swfstream->get_pos();
 				bool placeflaghasclipactions = swfstream->readUB(1);
@@ -132,22 +134,72 @@ Error Parser::tag_loop(Stream *swfstream)
 				bool placeflaghasmatrix = swfstream->readUB(1);
 				bool placeflaghascharacter = swfstream->readUB(1);
 				bool placeflagmove = swfstream->readUB(1);
+				bool placeflagopaquebackground = false,	placeflaghasvisible = false,	placeflaghasimage = false,
+					placeflaghasclassname = false,	placeflaghascacheasbitmap = false,	placeflaghasblendmode = false,
+					placeflaghasfilterlist = false;
+				if(rh.tag==TagType::PlaceObject3) {
+					placeflagopaquebackground = swfstream->readUB(1);
+					placeflaghasvisible = swfstream->readUB(1);
+					placeflaghasimage = swfstream->readUB(1);
+					placeflaghasclassname = swfstream->readUB(1);
+					placeflaghascacheasbitmap = swfstream->readUB(1);
+					placeflaghasblendmode = swfstream->readUB(1);
+					placeflaghasfilterlist = swfstream->readUB(1);
+				}
 
 				uint16_t depth = swfstream->readUI16();
+				if(rh.tag==TagType::PlaceObject3)
+					if(placeflaghasclassname || (placeflaghasimage && placeflaghascharacter))	swfstream->readSTRING();
 				if(placeflaghascharacter)		swfstream->readUI16();
 				if(placeflaghasmatrix)			swfstream->readMATRIX();
 				if(placeflaghascolortransform)	swfstream->readCXFORMWITHALPHA();
 				if(placeflaghasratio)			swfstream->readUI16();
 				if(placeflaghasname)			swfstream->readSTRING();
 				if(placeflaghasclipdepth)		swfstream->readUI16();
+				if(rh.tag==TagType::PlaceObject3) {
+					if(placeflaghasfilterlist)		swfstream->readFILTERLIST();
+					if(placeflaghasblendmode)		swfstream->readUI8();
+					if(placeflaghascacheasbitmap)	swfstream->readUI8();
+					if(placeflaghasvisible)			swfstream->readUI8();
+					if(placeflaghasvisible)			swfstream->readRGBA();
+				}
 				//if(placeflaghasclipactions)		swfstream->readCLIPACTIONS();
 				readlength = (swfstream->get_pos()-readlength);
 				if((rh.length-readlength)>0)	swfstream->readBytesAligned(rh.length-readlength);
 				break;
 			}
+			case TagType::RemoveObject:
+			case TagType::RemoveObject2:
+			{
+				if(rh.tag==TagType::RemoveObject)	uint16_t characterid = swfstream->readUI16();
+				uint16_t depth = swfstream->readUI16();
+				break;
+			}
+			case TagType::DefineSceneAndFrameLabelData:
+			{
+				uint32_t scenecount = swfstream->readEncodedU32();
+				for(uint32_t i=0; i<scenecount; i++) {
+					uint32_t offset = swfstream->readEncodedU32();
+					const char *name = swfstream->readSTRING();
+				}
+				uint32_t framelabelcount = swfstream->readEncodedU32();
+				for(uint32_t i=0; i<scenecount; i++) {
+					uint32_t framenum = swfstream->readEncodedU32();
+					const char *name = swfstream->readSTRING();
+				}
+				break;
+			}
 			case TagType::SetBackgroundColor:
 			{
 				movieprops.bgcolour = swfstream->readRGB();
+				break;
+			}
+			case TagType::FrameLabel:
+			{
+				int readlength = swfstream->get_pos();
+				swfstream->readSTRING();	// Name
+				readlength = (swfstream->get_pos()-readlength);
+				if((rh.length-readlength)>0)	swfstream->readUI8();	// Named Anchor Flag
 				break;
 			}
 			case TagType::FileAttributes:
@@ -162,6 +214,14 @@ Error Parser::tag_loop(Stream *swfstream)
 				getbits = swfstream->readBits(1);			// UseNetwork
 				for(int i=1; i<rh.length; i++)				// Reserved bytes
 					getbits = swfstream->readUI8();
+				break;
+			}
+			case TagType::Protect:
+			{
+				if(rh.length>0)
+					return Error::SWF_FILE_ENCRYPTED;
+				//else
+				//	return Error::SWF_FILE_PROTECTED;
 				break;
 			}
 			case TagType::Metadata:
@@ -193,12 +253,12 @@ Stream::Stream(uint8_t *d, uint32_t len)
 
 Stream::~Stream()
 {
-	if(data)	delete data;
+	if(data)	free(data);
 }
 
 
 
-RecordHeader Stream::readRECORDHEADER()
+RecordHeader inline Stream::readRECORDHEADER()
 {
 	RecordHeader rh;
 	uint16_t fulltag = readUI16();
@@ -208,13 +268,13 @@ RecordHeader Stream::readRECORDHEADER()
 	return rh;
 }
 
-FillStyle Stream::readFILLSTYLE(uint16_t tag)
+FillStyle inline Stream::readFILLSTYLE(uint16_t tag)
 {
 	FillStyle fs;
 	fs.FillStyleType = readUI8();
 	switch(fs.FillStyleType) {
 	case 0x00:	// Solid
-		if(tag>TagType::DefineShape2)	fs.Color = readRGBA();
+		if(tag>=TagType::DefineShape3)	fs.Color = readRGBA();
 		else							fs.Color = readRGB();
 		break;
 	case 0x10:	// Linear gradient
@@ -235,18 +295,31 @@ FillStyle Stream::readFILLSTYLE(uint16_t tag)
 	return fs;
 }
 
-LineStyle Stream::readLINESTYLE(uint16_t tag)
+void inline Stream::readFILLSTYLEARRAY(uint16_t tag)
+{
+	uint16_t stylecount = readUI8();	// FillStyleCount
+	if((stylecount==0xFF) && (tag>=TagType::DefineShape2))
+		stylecount = readUI16();
+	for(int i=0; i<stylecount; i++)
+		dictionary.FillStyles.push_back(readFILLSTYLE(tag));
+}
+
+LineStyle inline Stream::readLINESTYLE(uint16_t tag)
 {
 	LineStyle ls;
 	ls.Width = readUI16() / 20.0f;
-	if(tag>TagType::DefineShape2)	ls.Color = readRGBA();
+	if(tag>=TagType::DefineShape3)	ls.Color = readRGBA();
 	else							ls.Color = readRGB();
+	ls.StartCapStyle = ls.EndCapStyle = LineStyle::Cap::ROUND;
+	ls.JoinStyle = LineStyle::Join::ROUND;
+	ls.HasFillFlag = ls.NoHScaleFlag = ls.NoVScaleFlag = ls.PixelHintingFlag = ls.NoClose = false;
+	ls.MiterLimitFactor = 1.0f;
 	return ls;
 }
 
-LineStyle2 Stream::readLINESTYLE2(uint16_t tag)
+LineStyle inline Stream::readLINESTYLE2(uint16_t tag)
 {
-	LineStyle2 ls;
+	LineStyle ls;
 	ls.Width = readUI16() / 20.0f;
 	ls.StartCapStyle = static_cast<LineStyle::Cap>(readUB(2));
 	ls.JoinStyle = static_cast<LineStyle::Join>(readUB(2));
@@ -258,42 +331,61 @@ LineStyle2 Stream::readLINESTYLE2(uint16_t tag)
 	ls.NoClose = readUB(1);
 	ls.EndCapStyle = static_cast<LineStyle::Cap>(readUB(2));
 	if(ls.JoinStyle==LineStyle::Join::MITER)
-		ls.MiterLimitFactor = readFIXED8();
-	ls.Color = readRGBA();
+		ls.MiterLimitFactor = (readUI16()/256.0f);
 	if(ls.HasFillFlag)
 		ls.FillType = readFILLSTYLE(tag);
+	else
+		ls.Color = readRGBA();
 	return ls;
 }
 
-ShapeRecordArray Stream::readSHAPEWITHSTYLE(uint16_t tag)
+void inline Stream::readLINESTYLEARRAY(uint16_t tag)
 {
-	uint16_t stylecount = readUI8();	// FillStyleCount
-	if(stylecount == 0xFF && (tag>TagType::DefineShape))
+	uint16_t stylecount = readUI8();	// LineStyleCount
+	if(stylecount==0xFF)
 		stylecount = readUI16();
 	for(int i=0; i<stylecount; i++)
-		dictionary.FillStyles.push_back(readFILLSTYLE(tag));
-	stylecount = readUI8();				// LineStyleCount
-	if(stylecount == 0xFF && (tag>TagType::DefineShape))
-		stylecount = readUI16();
-	for(int i=0; i<stylecount; i++)
-		if(tag==TagType::DefineShape4)	dictionary.LineStyles.push_back(readLINESTYLE2(tag));
+		if(tag>=TagType::DefineShape4)	dictionary.LineStyles.push_back(readLINESTYLE2(tag));
 		else							dictionary.LineStyles.push_back(readLINESTYLE(tag));
+}
+
+Shape inline Stream::readSHAPEWITHSTYLE(uint16_t shapeid, uint16_t tag)
+{
+	readFILLSTYLEARRAY(tag);
+	readLINESTYLEARRAY(tag);
 	dictionary.NumFillBits = readUB(4);
 	dictionary.NumLineBits = readUB(4);
 
-	reset_bits_pending();
 	uint8_t typeflag = readUB(1);
 	uint8_t stateflags = readUB(5);
-	ShapeRecordArray shape;
+	Shape shape;
 	while(!(typeflag==0x00 && stateflags==0x00)) {
-		shape.push_back(readSHAPERECORD(tag, typeflag, stateflags));
+		if(typeflag) {
+			Vertex v = readSHAPERECORDedge((stateflags&0x10)?ShapeRecordType::STRAIGHTEDGE:ShapeRecordType::CURVEDEDGE, (stateflags&0x0F)+2);
+			Vertex prev = shape.vertices.back();
+			v.anchor.x += prev.anchor.x;
+			v.anchor.y += prev.anchor.y;
+			v.control.x += prev.anchor.x;
+			v.control.y += prev.anchor.y;
+			shape.vertices.push_back(v);
+		} else {
+			StyleChangeRecord change = readSHAPERECORDstylechange(tag, stateflags);
+			shape = Shape();
+			Vertex v;
+			v.anchor.x = change.MoveDeltaX;
+			v.anchor.y = change.MoveDeltaY;
+			shape.fill0 = change.FillStyle0;
+			shape.fill1 = change.FillStyle1;
+			shape.stroke = change.LineStyle;
+			shape.vertices.push_back(v);
+		}
 		typeflag = readUB(1);
 		stateflags = readUB(5);
 	}
 	return shape;
 }
 
-Gradient Stream::readGRADIENT(uint16_t tag)
+Gradient inline Stream::readGRADIENT(uint16_t tag)
 {
 	Gradient g;
 	g.SpreadMode = readUB(2);
@@ -304,7 +396,7 @@ Gradient Stream::readGRADIENT(uint16_t tag)
 	return g;
 }
 
-FocalGradient Stream::readFOCALGRADIENT(uint16_t tag)
+FocalGradient inline Stream::readFOCALGRADIENT(uint16_t tag)
 {
 	FocalGradient fg;
 	fg.SpreadMode = readUB(2);
@@ -316,7 +408,7 @@ FocalGradient Stream::readFOCALGRADIENT(uint16_t tag)
 	return fg;
 }
 
-GradRecord Stream::readGRADRECORD(uint16_t tag)
+GradRecord inline Stream::readGRADRECORD(uint16_t tag)
 {
 	GradRecord gr;
 	gr.Ratio = readUI8();
@@ -325,77 +417,186 @@ GradRecord Stream::readGRADRECORD(uint16_t tag)
 	return gr;
 }
 
-ShapeRecord Stream::readSHAPERECORD(uint16_t tag, uint8_t typeflag, uint8_t stateflags)
+StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t tag, uint8_t stateflags)
 {
-	if(typeflag) {	// Edge record
-		uint8_t numbits = (stateflags&0x0F)+2;	// NumBits (+2)
-		if(stateflags&0x10) {	// StraightFlag
-			StraightEdgeRecord r;
-			r.RecordType = ShapeRecord::Type::STRAIGHTEDGE;
+	StyleChangeRecord r;
+
+	r.MoveDeltaX = r.MoveDeltaY = 0.0f;
+	if(stateflags&0x01) {					// StateMoveTo
+		uint8_t movebits = readUB(5);
+		r.MoveDeltaX = readSB(movebits) / 20.0f;
+		r.MoveDeltaY = readSB(movebits) / 20.0f;
+	}
+
+	r.FillStyle0 = r.FillStyle1 = 0;
+	if(stateflags&0x02)						// StateFillStyle0
+		r.FillStyle0 = readUB(dictionary.NumFillBits);
+	if(stateflags&0x04)						// StateFillStyle1
+		r.FillStyle1 = readUB(dictionary.NumFillBits);
+
+	r.LineStyle = 0;
+	if(stateflags&0x08)						// StateLineStyle
+		r.LineStyle = readUB(dictionary.NumLineBits);
+
+	if(stateflags&0x10) {					// StateNewStyles
+		readFILLSTYLEARRAY(tag);
+		readLINESTYLEARRAY(tag);
+		dictionary.NumFillBits = readUB(4);	// NumFillBits
+		dictionary.NumLineBits = readUB(4);	// NumLineBits
+	}
+
+	return r;
+}
+
+Vertex inline Stream::readSHAPERECORDedge(ShapeRecordType type, uint8_t numbits)
+{
+	switch(type) {
+		case ShapeRecordType::STRAIGHTEDGE:
+		{
+			Vertex delta;
 			if(readUB(1)) {		// GeneralLineFlag
-				r.DeltaX = readSB(numbits) / 20.0f;
-				r.DeltaY = readSB(numbits) / 20.0f;
+				delta.anchor.x = readSB(numbits) / 20.0f;
+				delta.anchor.y = readSB(numbits) / 20.0f;
 			} else {
-				if(readUB(1)) {	// VertLineFlag
-					r.DeltaX = 0.0f;
-					r.DeltaY = readSB(numbits) / 20.0f;
-				} else {
-					r.DeltaX = readSB(numbits) / 20.0f;
-					r.DeltaY = 0.0f;
-				}
+				if(readUB(1))	// VertLineFlag
+					delta.anchor.y = readSB(numbits) / 20.0f;
+				else
+					delta.anchor.x = readSB(numbits) / 20.0f;
 			}
-			return r;
-		} else {
-			CurvedEdgeRecord r;
-			r.RecordType = ShapeRecord::Type::CURVEDEDGE;
-			r.ControlDeltaX = readSB(numbits) / 20.0f;
-			r.ControlDeltaY = readSB(numbits) / 20.0f;
-			r.AnchorDeltaX = readSB(numbits) / 20.0f;
-			r.AnchorDeltaY = readSB(numbits) / 20.0f;
-			return r;
+			return delta;
 		}
-	} else {		// Style change record
-		StyleChangeRecord r;
-		r.RecordType = ShapeRecord::Type::STYLECHANGE;
-
-		r.MoveDeltaX = r.MoveDeltaY = 0.0f;
-		if(stateflags&0x01) {					// StateMoveTo
-			uint8_t movebits = readUB(5);
-			r.MoveDeltaX = readSB(movebits) / 20.0f;
-			r.MoveDeltaY = readSB(movebits) / 20.0f;
+		case ShapeRecordType::CURVEDEDGE:
+		{
+			Vertex delta;
+			delta.control.x = readSB(numbits) / 20.0f;
+			delta.control.y = readSB(numbits) / 20.0f;
+			delta.anchor.x = delta.control.x + (readSB(numbits) / 20.0f);
+			delta.anchor.y = delta.control.y + (readSB(numbits) / 20.0f);
+			return delta;
 		}
+	}
+}
 
-		r.FillStyle0 = r.FillStyle1 = 0;
-		if(stateflags&0x02)						// StateFillStyle0
-			r.FillStyle0 = readUB(dictionary.NumFillBits);
-		if(stateflags&0x04)						// StateFillStyle1
-			r.FillStyle1 = readUB(dictionary.NumFillBits);
-
-		r.LineStyle = 0;
-		if(stateflags&0x08)						// StateLineStyle
-			r.LineStyle = readUB(dictionary.NumLineBits);
-
-		if(stateflags&0x10) {					// StateNewStyles
-			uint16_t stylecount = readUI8();	// FillStyleCount
-			if(stylecount == 0xFF && ( tag>TagType::DefineShape ))
-				stylecount = readUI16();
-			for(int i=0; i<stylecount; i++)
-				dictionary.FillStyles.push_back(readFILLSTYLE(tag));
-			stylecount = readUI8();				// LineStyleCount
-			if(stylecount == 0xFF && ( tag>TagType::DefineShape ))
-				stylecount = readUI16();
-			for(int i=0; i<stylecount; i++)
-				dictionary.LineStyles.push_back(readLINESTYLE(tag));
-			dictionary.NumFillBits = readUB(4);	// NumFillBits
-			dictionary.NumLineBits = readUB(4);	// NumLineBits
+void inline Stream::readFILTERLIST()
+{
+	uint8_t count = readUI8();
+	for(uint8_t i=0; i<count; i++) {
+		uint8_t filterid = readUI8();
+		switch(filterid) {
+			case 0:	// DROPSHADOWFILTER
+			{
+				readRGBA();
+				readFIXED();
+				readFIXED();
+				readFIXED();
+				readFIXED();
+				readFIXED8();
+				readUB(1);
+				readUB(1);
+				readUB(1);
+				readUB(5);
+				break;
+			}
+			case 1:	// BLURFILTER
+			{
+				readFIXED();
+				readFIXED();
+				readUB(5);
+				readUB(3);	// Reserved
+				break;
+			}
+			case 2:	// GLOWFILTER
+			{
+				readRGBA();
+				readFIXED();
+				readFIXED();
+				readFIXED8();
+				readUB(1);
+				readUB(1);
+				readUB(1);
+				readUB(5);
+				break;
+			}
+			case 3:	// BEVELFILTER
+			{
+				readRGBA();
+				readRGBA();
+				readFIXED();
+				readFIXED();
+				readFIXED();
+				readFIXED8();
+				readUB(1);
+				readUB(1);
+				readUB(1);
+				readUB(1);
+				readUB(4);
+				break;
+			}
+			case 4:	// GRADIENTGLOWFILTER
+			{
+				uint8_t numcolors = readUI8();
+				for(int j=0; j<numcolors; j++) {
+					readRGBA();
+					readUI8();
+				}
+				readFIXED();
+				readFIXED();
+				readFIXED();
+				readFIXED();
+				readFIXED8();
+				readUB(1);
+				readUB(1);
+				readUB(1);
+				readUB(1);
+				readUB(4);
+				numcolors = readUI8();
+				for(int j=0; j<numcolors; j++) {
+					readRGBA();
+					readUI8();
+				}
+				readFIXED();
+				readFIXED();
+				readFIXED();
+				readFIXED();
+				readFIXED8();
+				readUB(1);
+				readUB(1);
+				break;
+			}
+			case 5:	// CONVOLUTIONFILTER
+			{
+				uint8_t matrixx = readUI8();
+				uint8_t matrixy = readUI8();
+				readFLOAT();
+				readFLOAT();
+				for(int j=0; j<( matrixx*matrixy ); j++)
+					readFLOAT();
+				readRGBA();
+				readUB(6);	// Reserved
+				readUB(1);
+				readUB(1);
+				break;
+			}
+			case 6:	// COLORMATRIXFILTER
+			{
+				for(int j=0; j<20; j++)
+					readFLOAT();
+				break;
+			}
+			case 7:	// GRADIENTBEVELFILTER
+			{
+				readUB(1);
+				readUB(1);
+				readUB(4);
+				break;
+			}
 		}
-		return r;
 	}
 }
 
 
 
-Rect Stream::readRECT()
+Rect inline Stream::readRECT()
 {
 	reset_bits_pending();
 	uint8_t bits = readUB(5);
@@ -407,7 +608,7 @@ Rect Stream::readRECT()
 	return rect;
 }
 
-RGBA Stream::readRGB()
+RGBA inline Stream::readRGB()
 {
 	RGBA c;
 	c.r = readUI8();
@@ -417,7 +618,7 @@ RGBA Stream::readRGB()
 	return c;
 }
 
-RGBA Stream::readRGBA()
+RGBA inline Stream::readRGBA()
 {
 	RGBA c;
 	c.r = readUI8();
@@ -427,7 +628,7 @@ RGBA Stream::readRGBA()
 	return c;
 }
 
-RGBA Stream::readARGB()
+RGBA inline Stream::readARGB()
 {
 	RGBA c;
 	c.a = readUI8();
@@ -437,7 +638,7 @@ RGBA Stream::readARGB()
 	return c;
 }
 
-Matrix Stream::readMATRIX()
+Matrix inline Stream::readMATRIX()
 {
 	reset_bits_pending();
 	Matrix m;
@@ -462,7 +663,7 @@ Matrix Stream::readMATRIX()
 	return m;
 }
 
-CXForm Stream::readCXFORM(bool alpha)
+CXForm inline Stream::readCXFORM(bool alpha)
 {
 	reset_bits_pending();
 	CXForm cx;
@@ -486,7 +687,7 @@ CXForm Stream::readCXFORM(bool alpha)
 	return cx;
 }
 
-ClipActions Stream::readCLIPACTIONS()
+ClipActions inline Stream::readCLIPACTIONS()
 {
 	ClipActions ca;
 	return ca;
@@ -494,52 +695,52 @@ ClipActions Stream::readCLIPACTIONS()
 
 
 
-int8_t Stream::readSI8()
+int8_t inline Stream::readSI8()
 {
 	return readByte();
 }
 
-int16_t Stream::readSI16()
+int16_t inline Stream::readSI16()
 {
 	return (int16_t)readBytesAligned(sizeof(int16_t));
 }
 
-int32_t Stream::readSI32()
+int32_t inline Stream::readSI32()
 {
 	return (int32_t)readBytesAligned(sizeof(int32_t));
 }
 
-int64_t Stream::readSI64()
+int64_t inline Stream::readSI64()
 {
 	return (int64_t)readBytesAligned(sizeof(int64_t));
 }
 
-uint8_t Stream::readUI8()
+uint8_t inline Stream::readUI8()
 {
 	return readByte();
 }
 
-uint16_t Stream::readUI16()
+uint16_t inline Stream::readUI16()
 {
 	return (uint16_t)readBytesAligned(sizeof(uint16_t));
 }
 
-uint32_t Stream::readUI32()
+uint32_t inline Stream::readUI32()
 {
 	return (uint32_t)readBytesAligned(sizeof(uint32_t));
 }
 
-uint64_t Stream::readUI64()
+uint64_t inline Stream::readUI64()
 {
 	return (uint64_t)readBytesAligned(sizeof(uint64_t));
 }
 
-float Stream::readFLOAT()
+float inline Stream::readFLOAT()
 {
 	return (float)readBytesAligned(sizeof(float));
 }
 
-float Stream::readFLOAT16()
+float inline Stream::readFLOAT16()
 {
 	uint16_t float16 = readSI16();
 	int8_t sign = 1;
@@ -556,22 +757,22 @@ float Stream::readFLOAT16()
 	return (float)(sign * pow(2, exponent-FLOAT16_EXPONENT_BASE) * (1 + significand / 1024.0f));
 }
 
-double Stream::readDOUBLE()
+double inline Stream::readDOUBLE()
 {
 	return (double)readBytesAligned(sizeof(double));
 }
 
-float Stream::readFIXED()
+float inline Stream::readFIXED()
 {
 	return readSI32() / 65536.0f;
 }
 
-float Stream::readFIXED8()
+float inline Stream::readFIXED8()
 {
 	return readSI16() / 256.0f;
 }
 
-const char *Stream::readSTRING()
+const char inline *Stream::readSTRING()
 {
 	char *s = new char[256];
 	char newchar;
@@ -594,18 +795,19 @@ const char *Stream::readSTRING()
 
 
 
-int32_t Stream::readSB(uint8_t bits)
+int32_t inline Stream::readSB(uint8_t bits)
 {
-	uint8_t shift = 32-bits;
-	return (readBits(bits) << shift) >> shift;
+	uint32_t readbits = readBits(bits);
+	if(readbits&(1<<(bits-1)))	readbits |= (0xFFFFFFFF<<bits);
+	return (int32_t)readbits;
 }
 
-uint32_t Stream::readUB(uint8_t bits)
+uint32_t inline Stream::readUB(uint8_t bits)
 {
 	return readBits(bits);
 }
 
-float Stream::readFB(uint8_t bits)
+float inline Stream::readFB(uint8_t bits)
 {
 	return readSB(bits) / 65536.0f;
 }
@@ -615,10 +817,11 @@ float Stream::readFB(uint8_t bits)
 uint8_t inline Stream::readByte()
 {
 	reset_bits_pending();
+	assert(pos!=datalength);
 	return data[pos++];
 }
 
-uint64_t Stream::readBytesAligned(uint8_t bytes)
+uint64_t inline Stream::readBytesAligned(uint8_t bytes)
 {
 	uint64_t returnval = 0;
 	for(int i=0; i<bytes; i++)
@@ -626,10 +829,18 @@ uint64_t Stream::readBytesAligned(uint8_t bytes)
 	return returnval;
 }
 
-uint32_t Stream::readBits(uint8_t bits)
+uint64_t inline Stream::readBytesAlignedBigEndian(uint8_t bytes)
+{
+	uint64_t returnval = 0;
+	for(int i=bytes; i>0; i--)
+		returnval |= (uint64_t)readByte()<<((i-1)*8);
+	return returnval;
+}
+
+uint32_t inline Stream::readBits(uint8_t bits)
 {
 	if(bits==0)	return 0;
-	if((bits%8)==0 && bits_pending==0)	return (uint32_t)readBytesAligned((uint8_t)floor(bits/8));
+	if((bits%8)==0 && bits_pending==0)	return readBytesAlignedBigEndian(bits/8);
 	
 	uint32_t returnval = 0;
 	while(bits>0) {
@@ -657,7 +868,7 @@ uint32_t Stream::readBits(uint8_t bits)
 	return returnval;
 }
 
-uint32_t Stream::readEncodedU32()
+uint32_t inline Stream::readEncodedU32()
 {
 	uint32_t result = readByte();
 	if((result&0x80) != 0) {

@@ -6,6 +6,13 @@
 
 namespace SWF
 {
+	enum ShapeRecordType {
+		ENDSHAPE,
+		STYLECHANGE,
+		STRAIGHTEDGE,
+		CURVEDEDGE
+	};
+
 	struct RecordHeader
 	{
 		uint16_t tag : 10;
@@ -89,9 +96,6 @@ namespace SWF
 		enum class Join { ROUND, BEVEL, MITER } JoinStyle : 2;
 		float Width;
 		RGBA Color;
-	};
-	struct LineStyle2 : public LineStyle
-	{
 		bool HasFillFlag : 1;
 		bool NoHScaleFlag : 1;
 		bool NoVScaleFlag : 1;
@@ -102,23 +106,7 @@ namespace SWF
 	};
 	typedef std::list<LineStyle> LineStyleArray;
 
-	struct ShapeRecord
-	{
-		enum class Type { ENDSHAPE, STYLECHANGE, STRAIGHTEDGE, CURVEDEDGE } RecordType : 2;
-	};
-	struct StraightEdgeRecord : public ShapeRecord
-	{
-		float DeltaX;
-		float DeltaY;
-	};
-	struct CurvedEdgeRecord : public ShapeRecord
-	{
-		float ControlDeltaX;
-		float ControlDeltaY;
-		float AnchorDeltaX;
-		float AnchorDeltaY;
-	};
-	struct StyleChangeRecord : public ShapeRecord
+	struct StyleChangeRecord
 	{
 		float MoveDeltaX;
 		float MoveDeltaY;
@@ -128,7 +116,26 @@ namespace SWF
 		uint8_t NumFillBits : 4;
 		uint8_t NumLineBits : 4;
 	};
-	typedef std::list<ShapeRecord> ShapeRecordArray;
+
+	struct Point
+	{
+		float x = 0.0f;
+		float y = 0.0f;
+	};
+	struct Vertex
+	{
+		Point anchor;
+		Point control;
+	};
+	struct Shape
+	{
+		uint16_t fill0;
+		uint16_t fill1;
+		uint16_t stroke;
+		bool closed : 1;
+		std::list<Vertex> vertices;
+	};
+	typedef std::list<Shape> ShapeArray;
 
 	struct Dictionary
 	{
@@ -136,11 +143,12 @@ namespace SWF
 		uint8_t NumLineBits : 4;
 		FillStyleArray FillStyles;
 		LineStyleArray LineStyles;
-		ShapeRecordArray ShapeRecords;
+		ShapeArray ShapeRecords;
 	};
 
 	struct Properties
 	{
+		uint8_t version;
 		Rect dimensions;
 		RGBA bgcolour;
 		float framerate;
