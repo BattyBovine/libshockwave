@@ -25,8 +25,10 @@ Error Parser::parse_swf_data(uint8_t *data, uint32_t bytes, const char *password
 	if(data[Header::SIGNATURE+1] != 'W' || data[Header::SIGNATURE+2] != 'S')
 		return Error::SWF_DATA_INVALID;
 
-	Stream *swfstream;
-	movieprops.version = (data[Header::VERSION]);
+	if(swfstream) delete swfstream;
+
+	movieprops = new Properties();
+	movieprops->version = (data[Header::VERSION]);
 	switch(data[Header::SIGNATURE]) {
 	case 'C':	// zlib compression
 	{
@@ -76,17 +78,18 @@ Error Parser::parse_swf_data(uint8_t *data, uint32_t bytes, const char *password
 		swfstream = new Stream(&data[Header::LENGTH], datalength);
 	}
 
-	movieprops.dimensions = swfstream->readRECT();
-	movieprops.framerate = swfstream->readFIXED8();
-	movieprops.framecount = swfstream->readUI16();
+	movieprops->dimensions = swfstream->readRECT();
+	movieprops->framerate = swfstream->readFIXED8();
+	movieprops->framecount = swfstream->readUI16();
 
-	Error error = this->tag_loop(swfstream);
-	if(swfstream)	delete swfstream;
-	return error;
+	return this->tag_loop(swfstream);
 }
 
 Error Parser::tag_loop(Stream *swfstream)
 {
+	DisplayList currentdisplaystack;
+	dictionary = swfstream->get_dict();
+
 	RecordHeader rh = swfstream->readRECORDHEADER();
 	uint16_t framecounter = 0;
 	while(rh.tag != TagType::End) {
@@ -97,7 +100,7 @@ Error Parser::tag_loop(Stream *swfstream)
 			{
 				uint16_t shapeid = swfstream->readUI16();
 				Rect shapebounds = swfstream->readRECT();
-				swfstream->readSHAPEWITHSTYLE(shapeid, rh.tag);
+				swfstream->readSHAPEWITHSTYLE(shapeid, shapebounds, rh.tag);
 				break;
 			}
 			case TagType::DefineShape4:
@@ -109,7 +112,7 @@ Error Parser::tag_loop(Stream *swfstream)
 				bool usesfillwindingrule = swfstream->readUB(1);
 				bool usesnonscalingstrokes = swfstream->readUB(1);
 				bool usesscalingstrokes = swfstream->readUB(1);
-				swfstream->readSHAPEWITHSTYLE(shapeid, rh.tag);
+				swfstream->readSHAPEWITHSTYLE(shapeid, shapebounds, rh.tag);
 				break;
 			}
 			case TagType::PlaceObject:
@@ -120,12 +123,21 @@ Error Parser::tag_loop(Stream *swfstream)
 				Matrix matrix = swfstream->readMATRIX();
 				readlength = (swfstream->get_pos()-readlength);
 				if((rh.length-readlength)>0)	swfstream->readCXFORM();
+
+				if(characterid>0) {
+					DisplayChar character;
+					character.id = characterid;
+					character.transform = matrix;
+					currentdisplaystack[depth] = character;
+				}
+
 				break;
 			}
 			case TagType::PlaceObject2:
 			case TagType::PlaceObject3:
 			{
 				int readlength = swfstream->get_pos();
+
 				bool placeflaghasclipactions = swfstream->readUB(1);
 				bool placeflaghasclipdepth = swfstream->readUB(1);
 				bool placeflaghasname = swfstream->readUB(1);
@@ -148,10 +160,13 @@ Error Parser::tag_loop(Stream *swfstream)
 				}
 
 				uint16_t depth = swfstream->readUI16();
-				if(rh.tag==TagType::PlaceObject3)
-					if(placeflaghasclassname || (placeflaghasimage && placeflaghascharacter))	swfstream->readSTRING();
-				if(placeflaghascharacter)		swfstream->readUI16();
-				if(placeflaghasmatrix)			swfstream->readMATRIX();
+				const char *name = NULL;
+				if(rh.tag==TagType::PlaceObject3 && (placeflaghasclassname || (placeflaghasimage && placeflaghascharacter)))
+					name = swfstream->readSTRING();
+				uint16_t characterid = 0;
+				Matrix matrix;
+				if(placeflaghascharacter)		characterid = swfstream->readUI16();
+				if(placeflaghasmatrix)			matrix = swfstream->readMATRIX();
 				if(placeflaghascolortransform)	swfstream->readCXFORMWITHALPHA();
 				if(placeflaghasratio)			swfstream->readUI16();
 				if(placeflaghasname)			swfstream->readSTRING();
@@ -164,6 +179,14 @@ Error Parser::tag_loop(Stream *swfstream)
 					if(placeflaghasvisible)			swfstream->readRGBA();
 				}
 				//if(placeflaghasclipactions)		swfstream->readCLIPACTIONS();
+
+				if(characterid>0) {
+					DisplayChar character;
+					character.id = characterid;
+					character.transform = matrix;
+					currentdisplaystack[depth] = character;
+				}
+
 				readlength = (swfstream->get_pos()-readlength);
 				if((rh.length-readlength)>0)	swfstream->readBytesAligned(rh.length-readlength);
 				break;
@@ -171,8 +194,10 @@ Error Parser::tag_loop(Stream *swfstream)
 			case TagType::RemoveObject:
 			case TagType::RemoveObject2:
 			{
-				if(rh.tag==TagType::RemoveObject)	uint16_t characterid = swfstream->readUI16();
+				uint16_t characterid = 0;
+				if(rh.tag==TagType::RemoveObject)	characterid = swfstream->readUI16();
 				uint16_t depth = swfstream->readUI16();
+				currentdisplaystack.erase(depth);
 				break;
 			}
 			case TagType::DefineSceneAndFrameLabelData:
@@ -191,7 +216,7 @@ Error Parser::tag_loop(Stream *swfstream)
 			}
 			case TagType::SetBackgroundColor:
 			{
-				movieprops.bgcolour = swfstream->readRGB();
+				movieprops->bgcolour = swfstream->readRGB();
 				break;
 			}
 			case TagType::FrameLabel:
@@ -230,7 +255,10 @@ Error Parser::tag_loop(Stream *swfstream)
 				break;
 			}
 			case TagType::ShowFrame:
+			{
+				dictionary->Frames.push_back(currentdisplaystack);
 				framecounter++;
+			}
 			default:
 				swfstream->readBytesAligned(rh.length);
 		}
@@ -244,16 +272,12 @@ Error Parser::tag_loop(Stream *swfstream)
 Stream::Stream(uint8_t *d, uint32_t len)
 {
 	assert(d!=NULL);
-	data = (uint8_t*)malloc(len);
+	data = d;
 	datalength = len;
-	memcpy(data, d, datalength);
 	rewind();
 	reset_bits_pending();
-}
 
-Stream::~Stream()
-{
-	if(data)	free(data);
+	dict = new Dictionary();
 }
 
 
@@ -264,7 +288,7 @@ RecordHeader inline Stream::readRECORDHEADER()
 	uint16_t fulltag = readUI16();
 	rh.length = (fulltag & 0x003F);
 	if(rh.length==0x3F)	rh.length = readUI32();
-	rh.tag = fulltag>>6;
+	rh.tag = static_cast<TagType>(fulltag>>6);
 	return rh;
 }
 
@@ -301,7 +325,7 @@ void inline Stream::readFILLSTYLEARRAY(uint16_t tag)
 	if((stylecount==0xFF) && (tag>=TagType::DefineShape2))
 		stylecount = readUI16();
 	for(int i=0; i<stylecount; i++)
-		dictionary.FillStyles.push_back(readFILLSTYLE(tag));
+		dict->FillStyles.push_back(readFILLSTYLE(tag));
 }
 
 LineStyle inline Stream::readLINESTYLE(uint16_t tag)
@@ -345,35 +369,37 @@ void inline Stream::readLINESTYLEARRAY(uint16_t tag)
 	if(stylecount==0xFF)
 		stylecount = readUI16();
 	for(int i=0; i<stylecount; i++)
-		if(tag>=TagType::DefineShape4)	dictionary.LineStyles.push_back(readLINESTYLE2(tag));
-		else							dictionary.LineStyles.push_back(readLINESTYLE(tag));
+		if(tag>=TagType::DefineShape4)	dict->LineStyles.push_back(readLINESTYLE2(tag));
+		else							dict->LineStyles.push_back(readLINESTYLE(tag));
 }
 
-Shape inline Stream::readSHAPEWITHSTYLE(uint16_t shapeid, uint16_t tag)
+void inline Stream::readSHAPEWITHSTYLE(uint16_t shapeid, Rect bounds, uint16_t tag)
 {
 	readFILLSTYLEARRAY(tag);
 	readLINESTYLEARRAY(tag);
-	dictionary.NumFillBits = readUB(4);
-	dictionary.NumLineBits = readUB(4);
+	dict->NumFillBits = readUB(4);
+	dict->NumLineBits = readUB(4);
 
 	uint8_t typeflag = readUB(1);
 	uint8_t stateflags = readUB(5);
+	Character character;
 	Shape shape;
 	while(!(typeflag==0x00 && stateflags==0x00)) {
 		if(typeflag) {
 			Vertex v = readSHAPERECORDedge((stateflags&0x10)?ShapeRecordType::STRAIGHTEDGE:ShapeRecordType::CURVEDEDGE, (stateflags&0x0F)+2);
 			Vertex prev = shape.vertices.back();
-			v.anchor.x += prev.anchor.x;
-			v.anchor.y += prev.anchor.y;
-			v.control.x += prev.anchor.x;
-			v.control.y += prev.anchor.y;
+			v.anchor.xtwips += prev.anchor.xtwips;
+			v.anchor.ytwips += prev.anchor.ytwips;
+			v.control.xtwips += prev.anchor.xtwips;
+			v.control.ytwips += prev.anchor.ytwips;
 			shape.vertices.push_back(v);
 		} else {
 			StyleChangeRecord change = readSHAPERECORDstylechange(tag, stateflags);
+			if(!shape.is_empty())	character.shapes.push_back(shape);
 			shape = Shape();
 			Vertex v;
-			v.anchor.x = change.MoveDeltaX;
-			v.anchor.y = change.MoveDeltaY;
+			v.anchor.xtwips = change.MoveDeltaX;
+			v.anchor.ytwips = change.MoveDeltaY;
 			shape.fill0 = change.FillStyle0;
 			shape.fill1 = change.FillStyle1;
 			shape.stroke = change.LineStyle;
@@ -382,7 +408,11 @@ Shape inline Stream::readSHAPEWITHSTYLE(uint16_t shapeid, uint16_t tag)
 		typeflag = readUB(1);
 		stateflags = readUB(5);
 	}
-	return shape;
+	if(!shape.is_empty())	character.shapes.push_back(shape);
+	if(!character.is_empty()) {
+		character.bounds = bounds;
+		dict->CharacterList[shapeid] = character;
+	}
 }
 
 Gradient inline Stream::readGRADIENT(uint16_t tag)
@@ -421,28 +451,28 @@ StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t tag, uint8_
 {
 	StyleChangeRecord r;
 
-	r.MoveDeltaX = r.MoveDeltaY = 0.0f;
+	r.MoveDeltaX = r.MoveDeltaY = 0;
 	if(stateflags&0x01) {					// StateMoveTo
 		uint8_t movebits = readUB(5);
-		r.MoveDeltaX = readSB(movebits) / 20.0f;
-		r.MoveDeltaY = readSB(movebits) / 20.0f;
+		r.MoveDeltaX = readSB(movebits);
+		r.MoveDeltaY = readSB(movebits);
 	}
 
 	r.FillStyle0 = r.FillStyle1 = 0;
 	if(stateflags&0x02)						// StateFillStyle0
-		r.FillStyle0 = readUB(dictionary.NumFillBits);
+		r.FillStyle0 = readUB(dict->NumFillBits);
 	if(stateflags&0x04)						// StateFillStyle1
-		r.FillStyle1 = readUB(dictionary.NumFillBits);
+		r.FillStyle1 = readUB(dict->NumFillBits);
 
 	r.LineStyle = 0;
 	if(stateflags&0x08)						// StateLineStyle
-		r.LineStyle = readUB(dictionary.NumLineBits);
+		r.LineStyle = readUB(dict->NumLineBits);
 
 	if(stateflags&0x10) {					// StateNewStyles
 		readFILLSTYLEARRAY(tag);
 		readLINESTYLEARRAY(tag);
-		dictionary.NumFillBits = readUB(4);	// NumFillBits
-		dictionary.NumLineBits = readUB(4);	// NumLineBits
+		dict->NumFillBits = readUB(4);	// NumFillBits
+		dict->NumLineBits = readUB(4);	// NumLineBits
 	}
 
 	return r;
@@ -455,23 +485,23 @@ Vertex inline Stream::readSHAPERECORDedge(ShapeRecordType type, uint8_t numbits)
 		{
 			Vertex delta;
 			if(readUB(1)) {		// GeneralLineFlag
-				delta.anchor.x = readSB(numbits) / 20.0f;
-				delta.anchor.y = readSB(numbits) / 20.0f;
+				delta.anchor.xtwips = delta.control.xtwips = readSB(numbits);
+				delta.anchor.ytwips = delta.control.ytwips = readSB(numbits);
 			} else {
 				if(readUB(1))	// VertLineFlag
-					delta.anchor.y = readSB(numbits) / 20.0f;
+					delta.anchor.ytwips = delta.control.ytwips = readSB(numbits);
 				else
-					delta.anchor.x = readSB(numbits) / 20.0f;
+					delta.anchor.xtwips = delta.control.xtwips = readSB(numbits);
 			}
 			return delta;
 		}
 		case ShapeRecordType::CURVEDEDGE:
 		{
 			Vertex delta;
-			delta.control.x = readSB(numbits) / 20.0f;
-			delta.control.y = readSB(numbits) / 20.0f;
-			delta.anchor.x = delta.control.x + (readSB(numbits) / 20.0f);
-			delta.anchor.y = delta.control.y + (readSB(numbits) / 20.0f);
+			delta.control.xtwips = readSB(numbits);
+			delta.control.ytwips = readSB(numbits);
+			delta.anchor.xtwips = delta.control.xtwips + readSB(numbits);
+			delta.anchor.ytwips = delta.control.ytwips + readSB(numbits);
 			return delta;
 		}
 	}
@@ -687,11 +717,11 @@ CXForm inline Stream::readCXFORM(bool alpha)
 	return cx;
 }
 
-ClipActions inline Stream::readCLIPACTIONS()
-{
-	ClipActions ca;
-	return ca;
-}
+//ClipActions inline Stream::readCLIPACTIONS()
+//{
+//	ClipActions ca;
+//	return ca;
+//}
 
 
 
@@ -781,7 +811,7 @@ const char inline *Stream::readSTRING()
 		if(i%256==0) {
 			char *snew = new char[i+256];
 			memcpy(snew, s, i);
-			delete s;
+			delete [] s;
 			s = snew;
 		}
 		newchar = readUI8();
@@ -789,7 +819,7 @@ const char inline *Stream::readSTRING()
 	}
 	char *snew = new char[i];
 	memcpy(snew, s, i);
-	delete s;
+	delete [] s;
 	return snew;
 }
 
@@ -824,7 +854,7 @@ uint8_t inline Stream::readByte()
 uint64_t inline Stream::readBytesAligned(uint8_t bytes)
 {
 	uint64_t returnval = 0;
-	for(int i=0; i<bytes; i++)
+	for(int8_t i=0; i<bytes; i++)
 		returnval |= (uint64_t)readByte()<<(i*8);
 	return returnval;
 }
@@ -832,7 +862,7 @@ uint64_t inline Stream::readBytesAligned(uint8_t bytes)
 uint64_t inline Stream::readBytesAlignedBigEndian(uint8_t bytes)
 {
 	uint64_t returnval = 0;
-	for(int i=bytes; i>0; i--)
+	for(int8_t i=bytes; i>0; i--)
 		returnval |= (uint64_t)readByte()<<((i-1)*8);
 	return returnval;
 }

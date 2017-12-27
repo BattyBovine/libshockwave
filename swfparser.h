@@ -126,7 +126,7 @@ namespace SWF
 		uint8_t partial_byte;
 		const uint8_t bitmasks[9] = {0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF};
 
-		Dictionary dictionary;
+		Dictionary *dict;
 
 		FillStyle inline readFILLSTYLE(uint16_t);
 		void inline readFILLSTYLEARRAY(uint16_t);
@@ -141,14 +141,15 @@ namespace SWF
 
 	public:
 		Stream(uint8_t*,uint32_t);
-		~Stream();
 		void inline seek(uint32_t s){pos=s;}
 		uint32_t inline get_pos(){return pos;};
 		void inline rewind(){pos=0;}
 		void inline reset_bits_pending(){bits_pending=0;}
 
+		Dictionary *get_dict(){return dict;}
+
 		RecordHeader inline readRECORDHEADER();
-		Shape inline readSHAPEWITHSTYLE(uint16_t, uint16_t);
+		void inline readSHAPEWITHSTYLE(uint16_t, Rect, uint16_t);
 		void inline readFILTERLIST();
 
 		Rect inline readRECT();
@@ -158,7 +159,7 @@ namespace SWF
 		Matrix inline readMATRIX();
 		CXForm inline readCXFORM(bool alpha=false);
 		CXForm inline readCXFORMWITHALPHA() { return readCXFORM(true); }
-		ClipActions inline readCLIPACTIONS();
+		//ClipActions inline readCLIPACTIONS();
 
 		int8_t inline readSI8();
 		int16_t inline readSI16();
@@ -188,12 +189,17 @@ namespace SWF
 
 	class Parser
 	{
-		Properties movieprops;
+		Stream *swfstream;
+		Dictionary *dictionary;
+		Properties *movieprops;
 
 		Error tag_loop(Stream*);
 
 	public:
+		Parser() { swfstream = NULL; dictionary = NULL; movieprops=NULL; }
+		~Parser() { if(dictionary) delete dictionary; }
 		Error parse_swf_data(uint8_t*, uint32_t, const char *password="");
+		Dictionary *get_dict() { return dictionary; }
 	};
 	
 }
