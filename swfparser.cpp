@@ -280,38 +280,38 @@ Stream::Stream(uint8_t *d, uint32_t len)
 	dict = new Dictionary();
 }
 
-
-
 RecordHeader inline Stream::readRECORDHEADER()
 {
 	RecordHeader rh;
 	uint16_t fulltag = readUI16();
 	rh.length = (fulltag & 0x003F);
 	if(rh.length==0x3F)	rh.length = readUI32();
-	rh.tag = static_cast<TagType>(fulltag>>6);
+	rh.tag = fulltag>>6;
 	return rh;
 }
 
 FillStyle inline Stream::readFILLSTYLE(uint16_t tag)
 {
 	FillStyle fs;
-	fs.FillStyleType = readUI8();
-	switch(fs.FillStyleType) {
-	case 0x00:	// Solid
+	fs.StyleType = static_cast<FillStyle::Type>(readUI8());
+	switch(fs.StyleType) {
+	case FillStyle::Type::SOLID:
 		if(tag>=TagType::DefineShape3)	fs.Color = readRGBA();
 		else							fs.Color = readRGB();
 		break;
-	case 0x10:	// Linear gradient
-	case 0x12:	// Radial gradient
-	case 0x13:	// Focal radial gradient
+	case FillStyle::Type::LINEARGRADIENT:
+	case FillStyle::Type::RADIALGRADIENT:
 		readMATRIX();
-		if(fs.FillStyleType==0x13)	readFOCALGRADIENT(tag);
-		else						readGRADIENT(tag);
+		readGRADIENT(tag);
 		break;
-	case 0x40:	// Repeating bitmap
-	case 0x41:	// Clipped bitmap
-	case 0x42:	// Non-smoothed repeating bitmap
-	case 0x43:	// Non-smoothed clipped bitmap
+	case FillStyle::Type::FOCALRADIALGRADIENT:
+		readMATRIX();
+		readFOCALGRADIENT(tag);
+		break;
+	case FillStyle::Type::REPEATINGBITMAP:
+	case FillStyle::Type::CLIPPEDBITMAP:
+	case FillStyle::Type::NONSMOOTHEDREPEATINGBITMAP:
+	case FillStyle::Type::NONSMOOTHEDCLIPPEDBITMAP:
 		readUI16();
 		readMATRIX();
 		break;
@@ -417,6 +417,7 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 
 Gradient inline Stream::readGRADIENT(uint16_t tag)
 {
+	reset_bits_pending();
 	Gradient g;
 	g.SpreadMode = readUB(2);
 	g.InterpolationMode = readUB(2);
@@ -428,6 +429,7 @@ Gradient inline Stream::readGRADIENT(uint16_t tag)
 
 FocalGradient inline Stream::readFOCALGRADIENT(uint16_t tag)
 {
+	reset_bits_pending();
 	FocalGradient fg;
 	fg.SpreadMode = readUB(2);
 	fg.InterpolationMode = readUB(2);

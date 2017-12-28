@@ -94,7 +94,7 @@ namespace SWF
 
 	struct FillStyle
 	{
-		uint8_t FillStyleType = 0;
+		enum class Type { SOLID, LINEARGRADIENT=0x10, RADIALGRADIENT=0x12, FOCALRADIALGRADIENT=0x13, REPEATINGBITMAP=0x40, CLIPPEDBITMAP=0x41, NONSMOOTHEDREPEATINGBITMAP=0x42, NONSMOOTHEDCLIPPEDBITMAP=0x43 } StyleType;
 		RGBA Color;
 		Matrix GradientMatrix;
 		Gradient Gradient;
