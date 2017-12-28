@@ -373,7 +373,7 @@ void inline Stream::readLINESTYLEARRAY(uint16_t tag)
 		else							dict->LineStyles.push_back(readLINESTYLE(tag));
 }
 
-void inline Stream::readSHAPEWITHSTYLE(uint16_t shapeid, Rect bounds, uint16_t tag)
+void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16_t tag)
 {
 	readFILLSTYLEARRAY(tag);
 	readLINESTYLEARRAY(tag);
@@ -388,18 +388,18 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t shapeid, Rect bounds, uint16_t t
 		if(typeflag) {
 			Vertex v = readSHAPERECORDedge((stateflags&0x10)?ShapeRecordType::STRAIGHTEDGE:ShapeRecordType::CURVEDEDGE, (stateflags&0x0F)+2);
 			Vertex prev = shape.vertices.back();
-			v.anchor.xtwips += prev.anchor.xtwips;
-			v.anchor.ytwips += prev.anchor.ytwips;
-			v.control.xtwips += prev.anchor.xtwips;
-			v.control.ytwips += prev.anchor.ytwips;
+			v.anchor.x += prev.anchor.x;
+			v.anchor.y += prev.anchor.y;
+			v.control.x += prev.anchor.x;
+			v.control.y += prev.anchor.y;
 			shape.vertices.push_back(v);
 		} else {
 			StyleChangeRecord change = readSHAPERECORDstylechange(tag, stateflags);
 			if(!shape.is_empty())	character.shapes.push_back(shape);
 			shape = Shape();
 			Vertex v;
-			v.anchor.xtwips = change.MoveDeltaX;
-			v.anchor.ytwips = change.MoveDeltaY;
+			v.anchor.x = change.MoveDeltaX;
+			v.anchor.y = change.MoveDeltaY;
 			shape.fill0 = change.FillStyle0;
 			shape.fill1 = change.FillStyle1;
 			shape.stroke = change.LineStyle;
@@ -411,7 +411,7 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t shapeid, Rect bounds, uint16_t t
 	if(!shape.is_empty())	character.shapes.push_back(shape);
 	if(!character.is_empty()) {
 		character.bounds = bounds;
-		dict->CharacterList[shapeid] = character;
+		dict->CharacterList[characterid] = character;
 	}
 }
 
@@ -451,20 +451,17 @@ StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t tag, uint8_
 {
 	StyleChangeRecord r;
 
-	r.MoveDeltaX = r.MoveDeltaY = 0;
 	if(stateflags&0x01) {					// StateMoveTo
 		uint8_t movebits = readUB(5);
-		r.MoveDeltaX = readSB(movebits);
-		r.MoveDeltaY = readSB(movebits);
+		r.MoveDeltaX = (readSB(movebits)/20.0f);
+		r.MoveDeltaY = (readSB(movebits)/20.0f);
 	}
 
-	r.FillStyle0 = r.FillStyle1 = 0;
 	if(stateflags&0x02)						// StateFillStyle0
 		r.FillStyle0 = readUB(dict->NumFillBits);
 	if(stateflags&0x04)						// StateFillStyle1
 		r.FillStyle1 = readUB(dict->NumFillBits);
 
-	r.LineStyle = 0;
 	if(stateflags&0x08)						// StateLineStyle
 		r.LineStyle = readUB(dict->NumLineBits);
 
@@ -485,23 +482,23 @@ Vertex inline Stream::readSHAPERECORDedge(ShapeRecordType type, uint8_t numbits)
 		{
 			Vertex delta;
 			if(readUB(1)) {		// GeneralLineFlag
-				delta.anchor.xtwips = delta.control.xtwips = readSB(numbits);
-				delta.anchor.ytwips = delta.control.ytwips = readSB(numbits);
+				delta.anchor.x = delta.control.x = (readSB(numbits)/20.0f);
+				delta.anchor.y = delta.control.y = (readSB(numbits)/20.0f);
 			} else {
 				if(readUB(1))	// VertLineFlag
-					delta.anchor.ytwips = delta.control.ytwips = readSB(numbits);
+					delta.anchor.y = delta.control.y = (readSB(numbits)/20.0f);
 				else
-					delta.anchor.xtwips = delta.control.xtwips = readSB(numbits);
+					delta.anchor.x = delta.control.x = (readSB(numbits)/20.0f);
 			}
 			return delta;
 		}
 		case ShapeRecordType::CURVEDEDGE:
 		{
 			Vertex delta;
-			delta.control.xtwips = readSB(numbits);
-			delta.control.ytwips = readSB(numbits);
-			delta.anchor.xtwips = delta.control.xtwips + readSB(numbits);
-			delta.anchor.ytwips = delta.control.ytwips + readSB(numbits);
+			delta.control.x = (readSB(numbits)/20.0f);
+			delta.control.y = (readSB(numbits)/20.0f);
+			delta.anchor.x = delta.control.x + (readSB(numbits)/20.0f);
+			delta.anchor.y = delta.control.y + (readSB(numbits)/20.0f);
 			return delta;
 		}
 	}
@@ -672,24 +669,21 @@ Matrix inline Stream::readMATRIX()
 {
 	reset_bits_pending();
 	Matrix m;
-	m.ScaleX = m.ScaleY = 1.0f;			// Set this as the default scale
 	uint8_t bits = readUB(1);			// HasScale
 	if(bits) {
 		bits = readUB(5);				// NScaleBits
 		m.ScaleX = readFB(bits);		// ScaleX
 		m.ScaleY = readFB(bits);		// ScaleY
 	}
-	m.RotateSkew0=m.RotateSkew1=0.0f;	// Set this as the default skew
 	bits = readUB(1);					// HasRotate
 	if(bits) {
 		bits = readUB(5);				// NRotateBits
 		m.RotateSkew0 = readFB(bits);	// RotateSkew0
 		m.RotateSkew1 = readFB(bits);	// RotateSkew1
 	}
-	m.TranslateX = m.TranslateY = 0.0f;	// Set this as the default translate
 	bits = readUB(5);					// NTranslateBits
-	m.TranslateX = readSB(bits);		// TranslateX
-	m.TranslateY = readSB(bits);		// TranslateY
+	m.TranslateX = readSB(bits)/20.0f;	// TranslateX
+	m.TranslateY = readSB(bits)/20.0f;	// TranslateY
 	return m;
 }
 

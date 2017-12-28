@@ -53,12 +53,12 @@ namespace SWF
 
 	struct Matrix
 	{
-		float ScaleX = 0.0f;
-		float ScaleY = 0.0f;
+		float ScaleX = 1.0f;
+		float ScaleY = 1.0f;
 		float RotateSkew0 = 0.0f;
 		float RotateSkew1 = 0.0f;
-		int32_t TranslateX = 0;
-		int32_t TranslateY = 0;
+		float TranslateX = 0.0f;
+		float TranslateY = 0.0f;
 	};
 
 	struct CXForm
@@ -87,7 +87,7 @@ namespace SWF
 	};
 	struct FocalGradient : public Gradient
 	{
-		double FocalPoint = 0.0L;
+		float FocalPoint = 0.0f;
 	};
 
 
@@ -122,8 +122,8 @@ namespace SWF
 
 	struct StyleChangeRecord
 	{
-		int16_t MoveDeltaX = 0;
-		int16_t MoveDeltaY = 0;
+		float MoveDeltaX = 0.0f;
+		float MoveDeltaY = 0.0f;
 		uint16_t FillStyle0 = 0;
 		uint16_t FillStyle1 = 0;
 		uint16_t LineStyle = 0;
@@ -133,14 +133,12 @@ namespace SWF
 
 	struct Point
 	{
-		int32_t xtwips = 0;
-		int32_t ytwips = 0;
-		double xpix() { return (xtwips/20.0L); }
-		double ypix() { return (ytwips/20.0L); }
+		float x = 0.0f;
+		float y = 0.0f;
 		void transform(Matrix m)
 		{
-			xtwips = ( xtwips*m.ScaleX ) + ( ytwips*m.RotateSkew1 ) + m.TranslateX;
-			ytwips = ( xtwips*m.RotateSkew0 ) + ( ytwips*m.ScaleY ) + m.TranslateY;
+			x = ( x*m.ScaleX ) + ( y*m.RotateSkew1 ) + m.TranslateX;
+			y = ( x*m.RotateSkew0 ) + ( y*m.ScaleY ) + m.TranslateY;
 		}
 	};
 	struct Vertex
