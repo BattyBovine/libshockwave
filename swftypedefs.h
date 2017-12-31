@@ -101,7 +101,7 @@ namespace SWF
 		uint16_t BitmapId = 0;
 		Matrix BitmapMatrix;
 	};
-	typedef std::list<FillStyle> FillStyleArray;
+	typedef std::vector<FillStyle> FillStyleArray;
 
 	struct LineStyle
 	{
@@ -118,7 +118,7 @@ namespace SWF
 		float MiterLimitFactor = 1.0f;
 		FillStyle FillType;
 	};
-	typedef std::list<LineStyle> LineStyleArray;
+	typedef std::vector<LineStyle> LineStyleArray;
 
 	struct StyleChangeRecord
 	{
@@ -151,9 +151,9 @@ namespace SWF
 		uint16_t fill0 = 0;
 		uint16_t fill1 = 0;
 		uint16_t stroke = 0;
-		bool closed : 1;
-		bool clockwise : 1;
-		std::list<Vertex> vertices;
+		bool closed = false;
+		bool clockwise = false;
+		std::vector<Vertex> vertices;
 		bool is_empty() { return !vertices.size(); }
 	};
 	typedef std::list<Shape> ShapeList;

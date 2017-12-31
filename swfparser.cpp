@@ -395,6 +395,7 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 			shape.vertices.push_back(v);
 		} else {
 			StyleChangeRecord change = readSHAPERECORDstylechange(tag, stateflags);
+			shape.clockwise = path_is_clockwise(shape.vertices);
 			if(!shape.is_empty())	character.shapes.push_back(shape);
 			shape = Shape();
 			Vertex v;
@@ -408,6 +409,7 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 		typeflag = readUB(1);
 		stateflags = readUB(5);
 	}
+	shape.clockwise = path_is_clockwise(shape.vertices);
 	if(!shape.is_empty())	character.shapes.push_back(shape);
 	if(!character.is_empty()) {
 		character.bounds = bounds;
@@ -910,4 +912,20 @@ uint32_t inline Stream::readEncodedU32()
 		}
 	}
 	return result;
+}
+
+
+
+bool inline Stream::path_is_clockwise(std::vector<Vertex> v)
+{
+	if(v.size()<3)	return false;
+	if(!(round(v.front().anchor.x*100.0f)==round(v.back().anchor.x*100.0f) &&
+		round(v.front().anchor.y*100.0f)==round(v.back().anchor.y*100.0f)))
+		v.push_back(v[0]);
+	double area = 0;
+	Vertex *varray = &v[0];
+	size_t vsize = v.size()-1;
+	for(uint16_t i=0; i<vsize; i++)
+		area += (varray[i+1].anchor.x-varray[i].anchor.x)*(varray[i+1].anchor.y+varray[i].anchor.y);
+	return (area>0);
 }
