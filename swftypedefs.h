@@ -156,7 +156,7 @@ namespace SWF
 		std::vector<Vertex> vertices;
 		bool is_empty() { return !vertices.size(); }
 	};
-	typedef std::list<Shape> ShapeList;
+	typedef std::vector<Shape> ShapeList;
 	struct Character
 	{
 		Rect bounds;

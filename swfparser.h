@@ -139,7 +139,7 @@ namespace SWF
 		Vertex inline readSHAPERECORDedge(ShapeRecordType, uint8_t);
 		StyleChangeRecord inline readSHAPERECORDstylechange(uint16_t, uint8_t);
 
-		bool inline path_is_clockwise(std::vector<Vertex>);
+		Shape inline path_postprocess(Shape);
 
 	public:
 		Stream(uint8_t*,uint32_t);

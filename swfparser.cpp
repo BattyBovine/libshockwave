@@ -208,7 +208,7 @@ Error Parser::tag_loop(Stream *swfstream)
 					const char *name = swfstream->readSTRING();
 				}
 				uint32_t framelabelcount = swfstream->readEncodedU32();
-				for(uint32_t i=0; i<scenecount; i++) {
+				for(uint32_t i=0; i<framelabelcount; i++) {
 					uint32_t framenum = swfstream->readEncodedU32();
 					const char *name = swfstream->readSTRING();
 				}
@@ -384,23 +384,27 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 	uint8_t stateflags = readUB(5);
 	Character character;
 	Shape shape;
+	Point penlocation;
 	while(!(typeflag==0x00 && stateflags==0x00)) {
 		if(typeflag) {
 			Vertex v = readSHAPERECORDedge((stateflags&0x10)?ShapeRecordType::STRAIGHTEDGE:ShapeRecordType::CURVEDEDGE, (stateflags&0x0F)+2);
-			Vertex prev = shape.vertices.back();
-			v.anchor.x += prev.anchor.x;
-			v.anchor.y += prev.anchor.y;
-			v.control.x += prev.anchor.x;
-			v.control.y += prev.anchor.y;
+			v.anchor.x += penlocation.x;
+			v.anchor.y += penlocation.y;
+			v.control.x += penlocation.x;
+			v.control.y += penlocation.y;
 			shape.vertices.push_back(v);
+			penlocation.x = v.anchor.x;
+			penlocation.y = v.anchor.y;
 		} else {
 			StyleChangeRecord change = readSHAPERECORDstylechange(tag, stateflags);
-			shape.clockwise = path_is_clockwise(shape.vertices);
-			if(!shape.is_empty())	character.shapes.push_back(shape);
+			if(!shape.is_empty())	character.shapes.push_back(path_postprocess(shape));
+			if(change.MoveDeltaX!=0.0f || change.MoveDeltaY!=0.0f) {
+				penlocation.x = change.MoveDeltaX;
+				penlocation.y = change.MoveDeltaY;
+			}
 			shape = Shape();
 			Vertex v;
-			v.anchor.x = change.MoveDeltaX;
-			v.anchor.y = change.MoveDeltaY;
+			v.anchor = penlocation;
 			shape.fill0 = change.FillStyle0;
 			shape.fill1 = change.FillStyle1;
 			shape.stroke = change.LineStyle;
@@ -409,8 +413,7 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 		typeflag = readUB(1);
 		stateflags = readUB(5);
 	}
-	shape.clockwise = path_is_clockwise(shape.vertices);
-	if(!shape.is_empty())	character.shapes.push_back(shape);
+	if(!shape.is_empty())	character.shapes.push_back(path_postprocess(shape));
 	if(!character.is_empty()) {
 		character.bounds = bounds;
 		dict->CharacterList[characterid] = character;
@@ -916,16 +919,20 @@ uint32_t inline Stream::readEncodedU32()
 
 
 
-bool inline Stream::path_is_clockwise(std::vector<Vertex> v)
+Shape inline Stream::path_postprocess(Shape s)
 {
-	if(v.size()<3)	return false;
-	if(!(round(v.front().anchor.x*100.0f)==round(v.back().anchor.x*100.0f) &&
-		round(v.front().anchor.y*100.0f)==round(v.back().anchor.y*100.0f)))
-		v.push_back(v[0]);
-	double area = 0;
-	Vertex *varray = &v[0];
-	size_t vsize = v.size()-1;
-	for(uint16_t i=0; i<vsize; i++)
-		area += (varray[i+1].anchor.x-varray[i].anchor.x)*(varray[i+1].anchor.y+varray[i].anchor.y);
-	return (area>0);
+	if(s.vertices.size()<3)	return s;
+	s.closed = true;
+	if((!(round(s.vertices.front().anchor.x*100.0f)==round(s.vertices.back().anchor.x*100.0f) &&
+		round(s.vertices.front().anchor.y*100.0f)==round(s.vertices.back().anchor.y*100.0f))))
+		s.closed = false;
+	if(!s.closed)	s.vertices.push_back(s.vertices.front());	// Force a complete shape temporarily to determine winding
+	size_t vsize = s.vertices.size();
+	Vertex *varray = &s.vertices[0];
+	double area = 0.0L;
+	for(uint16_t i=1; i<vsize; i++)
+		area += ((varray[i-1].anchor.x*varray[i].anchor.y)-(varray[i].anchor.x*varray[i-1].anchor.y));
+	s.clockwise = (area>0);
+	if(!s.closed)	s.vertices.pop_back();	// Don't forget to remove that temp point
+	return s;
 }
