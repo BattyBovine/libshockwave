@@ -124,12 +124,12 @@ Error Parser::tag_loop(Stream *swfstream)
 				readlength = (swfstream->get_pos()-readlength);
 				if((rh.length-readlength)>0)	swfstream->readCXFORM();
 
-				if(characterid>0) {
+				if(currentdisplaystack[depth].id!=characterid) {
 					DisplayChar character;
 					character.id = characterid;
-					character.transform = matrix;
 					currentdisplaystack[depth] = character;
 				}
+				currentdisplaystack[depth].transform = matrix;
 
 				break;
 			}
@@ -180,11 +180,13 @@ Error Parser::tag_loop(Stream *swfstream)
 				}
 				//if(placeflaghasclipactions)		swfstream->readCLIPACTIONS();
 
-				if(characterid>0) {
+				if(placeflaghascharacter) {
 					DisplayChar character;
 					character.id = characterid;
-					character.transform = matrix;
 					currentdisplaystack[depth] = character;
+				}
+				if(placeflaghasmatrix) {
+					currentdisplaystack[depth].transform = matrix;
 				}
 
 				readlength = (swfstream->get_pos()-readlength);
@@ -255,10 +257,8 @@ Error Parser::tag_loop(Stream *swfstream)
 				break;
 			}
 			case TagType::ShowFrame:
-			{
 				dictionary->Frames.push_back(currentdisplaystack);
 				framecounter++;
-			}
 			default:
 				swfstream->readBytesAligned(rh.length);
 		}
