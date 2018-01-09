@@ -319,13 +319,13 @@ FillStyle inline Stream::readFILLSTYLE(uint16_t tag)
 	return fs;
 }
 
-void inline Stream::readFILLSTYLEARRAY(uint16_t tag)
+void inline Stream::readFILLSTYLEARRAY(uint16_t characterid, uint16_t tag)
 {
 	uint16_t stylecount = readUI8();	// FillStyleCount
 	if((stylecount==0xFF) && (tag>=TagType::DefineShape2))
 		stylecount = readUI16();
 	for(int i=0; i<stylecount; i++)
-		dict->FillStyles.push_back(readFILLSTYLE(tag));
+		dict->FillStyles[characterid].push_back(readFILLSTYLE(tag));
 }
 
 LineStyle inline Stream::readLINESTYLE(uint16_t tag)
@@ -363,20 +363,20 @@ LineStyle inline Stream::readLINESTYLE2(uint16_t tag)
 	return ls;
 }
 
-void inline Stream::readLINESTYLEARRAY(uint16_t tag)
+void inline Stream::readLINESTYLEARRAY(uint16_t characterid, uint16_t tag)
 {
 	uint16_t stylecount = readUI8();	// LineStyleCount
 	if(stylecount==0xFF)
 		stylecount = readUI16();
 	for(int i=0; i<stylecount; i++)
-		if(tag>=TagType::DefineShape4)	dict->LineStyles.push_back(readLINESTYLE2(tag));
-		else							dict->LineStyles.push_back(readLINESTYLE(tag));
+		if(tag>=TagType::DefineShape4)	dict->LineStyles[characterid].push_back(readLINESTYLE2(tag));
+		else							dict->LineStyles[characterid].push_back(readLINESTYLE(tag));
 }
 
 void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16_t tag)
 {
-	readFILLSTYLEARRAY(tag);
-	readLINESTYLEARRAY(tag);
+	readFILLSTYLEARRAY(characterid, tag);
+	readLINESTYLEARRAY(characterid, tag);
 	dict->NumFillBits = readUB(4);
 	dict->NumLineBits = readUB(4);
 
@@ -396,7 +396,7 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 			penlocation.x = v.anchor.x;
 			penlocation.y = v.anchor.y;
 		} else {
-			StyleChangeRecord change = readSHAPERECORDstylechange(tag, stateflags);
+			StyleChangeRecord change = readSHAPERECORDstylechange(characterid, tag, stateflags);
 			if(!shape.is_empty())	character.shapes.push_back(path_postprocess(shape));
 			if(change.MoveDeltaX!=0.0f || change.MoveDeltaY!=0.0f) {
 				penlocation.x = change.MoveDeltaX;
@@ -454,7 +454,7 @@ GradRecord inline Stream::readGRADRECORD(uint16_t tag)
 	return gr;
 }
 
-StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t tag, uint8_t stateflags)
+StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t characterid, uint16_t tag, uint8_t stateflags)
 {
 	StyleChangeRecord r;
 
@@ -473,8 +473,8 @@ StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t tag, uint8_
 		r.LineStyle = readUB(dict->NumLineBits);
 
 	if(stateflags&0x10) {					// StateNewStyles
-		readFILLSTYLEARRAY(tag);
-		readLINESTYLEARRAY(tag);
+		readFILLSTYLEARRAY(characterid, tag);
+		readLINESTYLEARRAY(characterid, tag);
 		dict->NumFillBits = readUB(4);	// NumFillBits
 		dict->NumLineBits = readUB(4);	// NumLineBits
 	}

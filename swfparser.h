@@ -129,15 +129,15 @@ namespace SWF
 		Dictionary *dict;
 
 		FillStyle inline readFILLSTYLE(uint16_t);
-		void inline readFILLSTYLEARRAY(uint16_t);
+		void inline readFILLSTYLEARRAY(uint16_t, uint16_t);
 		LineStyle inline readLINESTYLE(uint16_t);
 		LineStyle inline readLINESTYLE2(uint16_t);
-		void inline readLINESTYLEARRAY(uint16_t);
+		void inline readLINESTYLEARRAY(uint16_t, uint16_t);
 		Gradient inline readGRADIENT(uint16_t);
 		FocalGradient inline readFOCALGRADIENT(uint16_t);
 		GradRecord inline readGRADRECORD(uint16_t);
 		Vertex inline readSHAPERECORDedge(ShapeRecordType, uint8_t);
-		StyleChangeRecord inline readSHAPERECORDstylechange(uint16_t, uint8_t);
+		StyleChangeRecord inline readSHAPERECORDstylechange(uint16_t, uint16_t, uint8_t);
 
 		Shape inline path_postprocess(Shape);
 

@@ -102,6 +102,7 @@ namespace SWF
 		Matrix BitmapMatrix;
 	};
 	typedef std::vector<FillStyle> FillStyleArray;
+	typedef std::map<uint16_t,FillStyleArray> FillStyleMap;
 
 	struct LineStyle
 	{
@@ -119,6 +120,7 @@ namespace SWF
 		FillStyle FillType;
 	};
 	typedef std::vector<LineStyle> LineStyleArray;
+	typedef std::map<uint16_t,LineStyleArray> LineStyleMap;
 
 	struct StyleChangeRecord
 	{
@@ -176,8 +178,8 @@ namespace SWF
 	{
 		uint8_t NumFillBits : 4;
 		uint8_t NumLineBits : 4;
-		FillStyleArray FillStyles;
-		LineStyleArray LineStyles;
+		FillStyleMap FillStyles;
+		LineStyleMap LineStyles;
 		CharacterDict CharacterList;
 		FrameList Frames;
 	};
