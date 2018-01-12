@@ -63,10 +63,10 @@ namespace SWF
 
 	struct CXForm
 	{
-		float RedMultTerm = 0.0f;
-		float GreenMultTerm = 0.0f;
-		float BlueMultTerm = 0.0f;
-		float AlphaMultTerm = 0.0f;
+		float RedMultTerm = 1.0f;
+		float GreenMultTerm = 1.0f;
+		float BlueMultTerm = 1.0f;
+		float AlphaMultTerm = 1.0f;
 		uint8_t RedAddTerm = 0;
 		uint8_t GreenAddTerm = 0;
 		uint8_t BlueAddTerm = 0;
@@ -169,6 +169,7 @@ namespace SWF
 	{
 		uint16_t id;
 		Matrix transform;
+		CXForm colourtransform;
 	};
 	typedef std::map<uint16_t,Character> CharacterDict;
 	typedef std::map<uint16_t,DisplayChar> DisplayList;

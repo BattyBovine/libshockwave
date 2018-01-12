@@ -122,7 +122,9 @@ Error Parser::tag_loop(Stream *swfstream)
 				uint16_t depth = swfstream->readUI16();
 				Matrix matrix = swfstream->readMATRIX();
 				readlength = (swfstream->get_pos()-readlength);
-				if((rh.length-readlength)>0)	swfstream->readCXFORM();
+				CXForm colourxform;
+				if((rh.length-readlength)>0)
+					colourxform = swfstream->readCXFORM();
 
 				if(currentdisplaystack[depth].id!=characterid) {
 					DisplayChar character;
@@ -130,6 +132,7 @@ Error Parser::tag_loop(Stream *swfstream)
 					currentdisplaystack[depth] = character;
 				}
 				currentdisplaystack[depth].transform = matrix;
+				currentdisplaystack[depth].colourtransform = colourxform;
 
 				break;
 			}
@@ -142,7 +145,7 @@ Error Parser::tag_loop(Stream *swfstream)
 				bool placeflaghasclipdepth = swfstream->readUB(1);
 				bool placeflaghasname = swfstream->readUB(1);
 				bool placeflaghasratio = swfstream->readUB(1);
-				bool placeflaghascolortransform = swfstream->readUB(1);
+				bool placeflaghascolourtransform = swfstream->readUB(1);
 				bool placeflaghasmatrix = swfstream->readUB(1);
 				bool placeflaghascharacter = swfstream->readUB(1);
 				bool placeflagmove = swfstream->readUB(1);
@@ -165,9 +168,10 @@ Error Parser::tag_loop(Stream *swfstream)
 					name = swfstream->readSTRING();
 				uint16_t characterid = 0;
 				Matrix matrix;
+				CXForm colourxform;
 				if(placeflaghascharacter)		characterid = swfstream->readUI16();
 				if(placeflaghasmatrix)			matrix = swfstream->readMATRIX();
-				if(placeflaghascolortransform)	swfstream->readCXFORMWITHALPHA();
+				if(placeflaghascolourtransform)	colourxform = swfstream->readCXFORMWITHALPHA();
 				if(placeflaghasratio)			swfstream->readUI16();
 				if(placeflaghasname)			swfstream->readSTRING();
 				if(placeflaghasclipdepth)		swfstream->readUI16();
@@ -185,9 +189,8 @@ Error Parser::tag_loop(Stream *swfstream)
 					character.id = characterid;
 					currentdisplaystack[depth] = character;
 				}
-				if(placeflaghasmatrix) {
-					currentdisplaystack[depth].transform = matrix;
-				}
+				if(placeflaghasmatrix)			currentdisplaystack[depth].transform = matrix;
+				if(placeflaghascolourtransform)	currentdisplaystack[depth].colourtransform = colourxform;
 
 				readlength = (swfstream->get_pos()-readlength);
 				if((rh.length-readlength)>0)	swfstream->readBytesAligned(rh.length-readlength);
