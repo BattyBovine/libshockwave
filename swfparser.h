@@ -202,6 +202,7 @@ namespace SWF
 		~Parser() { if(dictionary) delete dictionary; }
 		Error parse_swf_data(uint8_t*, uint32_t, const char *password="");
 		Dictionary *get_dict() { return dictionary; }
+		Properties *get_properties() { return movieprops; }
 	};
 	
 }

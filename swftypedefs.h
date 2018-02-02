@@ -150,11 +150,11 @@ namespace SWF
 	};
 	struct Shape
 	{
+		enum class Winding { NONE, CLOCKWISE, COUNTERCLOCKWISE } winding : 2;
 		uint16_t fill0 = 0;
 		uint16_t fill1 = 0;
 		uint16_t stroke = 0;
 		bool closed = false;
-		bool clockwise = false;
 		std::vector<Vertex> vertices;
 		bool is_empty() { return !vertices.size(); }
 	};

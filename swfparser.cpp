@@ -932,10 +932,15 @@ Shape inline Stream::path_postprocess(Shape s)
 	if(!s.closed)	s.vertices.push_back(s.vertices.front());	// Force a complete shape temporarily to determine winding
 	size_t vsize = s.vertices.size();
 	Vertex *varray = &s.vertices[0];
-	double area = 0.0L;
+	int32_t area = 0;
 	for(uint16_t i=1; i<vsize; i++)
-		area += ((varray[i-1].anchor.x*varray[i].anchor.y)-(varray[i].anchor.x*varray[i-1].anchor.y));
-	s.clockwise = (area>0);
+		area += int32_t(round((varray[i-1].anchor.x*varray[i].anchor.y)-(varray[i].anchor.x*varray[i-1].anchor.y)));
+	if(area > 0)
+		s.winding = Shape::Winding::CLOCKWISE;
+	else if(area < 0)
+		s.winding = Shape::Winding::COUNTERCLOCKWISE;
+	else
+		s.winding = Shape::Winding::NONE;
 	if(!s.closed)	s.vertices.pop_back();	// Don't forget to remove that temp point
 	return s;
 }
