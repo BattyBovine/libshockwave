@@ -106,9 +106,9 @@ namespace SWF
 
 	struct LineStyle
 	{
-		enum class Type { LINESTYLE, LINESTYLE2 } StyleType : 1;
-		enum class Cap  { ROUND, NONE, SQUARE } StartCapStyle : 2, EndCapStyle : 2;
-		enum class Join { ROUND, BEVEL, MITER } JoinStyle : 2;
+		enum class Type { LINESTYLE, LINESTYLE2 } StyleType;
+		enum class Cap  { ROUND, NONE, SQUARE } StartCapStyle, EndCapStyle;
+		enum class Join { ROUND, BEVEL, MITER } JoinStyle;
 		float Width = 1.0f;
 		RGBA Color;
 		bool HasFillFlag : 1;
@@ -150,7 +150,7 @@ namespace SWF
 	};
 	struct Shape
 	{
-		enum class Winding { NONE, CLOCKWISE, COUNTERCLOCKWISE } winding : 2;
+		enum class Winding { NONE, CLOCKWISE, COUNTERCLOCKWISE } winding;
 		uint16_t fill0 = 0;
 		uint16_t fill1 = 0;
 		uint16_t stroke = 0;
