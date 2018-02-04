@@ -124,6 +124,11 @@ namespace SWF
 
 	struct StyleChangeRecord
 	{
+		bool MoveDeltaFlag = false;
+		bool FillStyle0Flag = false;
+		bool FillStyle1Flag = false;
+		bool LineStyleFlag = false;
+		bool NewStylesFlag = false;
 		float MoveDeltaX = 0.0f;
 		float MoveDeltaY = 0.0f;
 		uint16_t FillStyle0 = 0;

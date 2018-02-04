@@ -401,16 +401,17 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 		} else {
 			StyleChangeRecord change = readSHAPERECORDstylechange(characterid, tag, stateflags);
 			if(!shape.is_empty())	character.shapes.push_back(path_postprocess(shape));
-			if(change.MoveDeltaX!=0.0f || change.MoveDeltaY!=0.0f) {
+			if(change.MoveDeltaFlag) {
 				penlocation.x = change.MoveDeltaX;
 				penlocation.y = change.MoveDeltaY;
+				shape = Shape();
 			}
-			shape = Shape();
+			shape.vertices.clear();
 			Vertex v;
 			v.anchor = penlocation;
-			shape.fill0 = change.FillStyle0;
-			shape.fill1 = change.FillStyle1;
-			shape.stroke = change.LineStyle;
+			if(change.FillStyle0Flag)	shape.fill0 = change.FillStyle0;
+			if(change.FillStyle1Flag)	shape.fill1 = change.FillStyle1;
+			if(change.LineStyleFlag)	shape.stroke = change.LineStyle;
 			shape.vertices.push_back(v);
 		}
 		typeflag = readUB(1);
@@ -465,21 +466,29 @@ StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t characterid
 		uint8_t movebits = readUB(5);
 		r.MoveDeltaX = (readSB(movebits)/20.0f);
 		r.MoveDeltaY = (readSB(movebits)/20.0f);
+		r.MoveDeltaFlag = true;
 	}
 
-	if(stateflags&0x02)						// StateFillStyle0
+	if(stateflags&0x02) {					// StateFillStyle0
 		r.FillStyle0 = readUB(dict->NumFillBits);
-	if(stateflags&0x04)						// StateFillStyle1
+		r.FillStyle0Flag = true;
+	}
+	if(stateflags&0x04) {					// StateFillStyle1
 		r.FillStyle1 = readUB(dict->NumFillBits);
+		r.FillStyle1Flag = true;
+	}
 
-	if(stateflags&0x08)						// StateLineStyle
+	if(stateflags&0x08) {					// StateLineStyle
 		r.LineStyle = readUB(dict->NumLineBits);
+		r.LineStyleFlag = true;
+	}
 
 	if(stateflags&0x10) {					// StateNewStyles
 		readFILLSTYLEARRAY(characterid, tag);
 		readLINESTYLEARRAY(characterid, tag);
 		dict->NumFillBits = readUB(4);	// NumFillBits
 		dict->NumLineBits = readUB(4);	// NumLineBits
+		r.NewStylesFlag = true;
 	}
 
 	return r;
