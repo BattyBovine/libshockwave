@@ -390,7 +390,7 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 	Point penlocation;
 	while(!(typeflag==0x00 && stateflags==0x00)) {
 		if(typeflag) {
-			Vertex v = readSHAPERECORDedge((stateflags&0x10)?ShapeRecordType::STRAIGHTEDGE:ShapeRecordType::CURVEDEDGE, (stateflags&0x0F)+2);
+			Vertex v = readSHAPERECORDedge((stateflags&0x10) ? ShapeRecordType::STRAIGHTEDGE : ShapeRecordType::CURVEDEDGE, (stateflags&0x0F)+2);
 			v.anchor.x += penlocation.x;
 			v.anchor.y += penlocation.y;
 			v.control.x += penlocation.x;
@@ -404,7 +404,6 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 			if(change.MoveDeltaFlag) {
 				penlocation.x = change.MoveDeltaX;
 				penlocation.y = change.MoveDeltaY;
-				shape = Shape();
 			}
 			shape.vertices.clear();
 			Vertex v;
