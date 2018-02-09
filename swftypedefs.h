@@ -136,6 +136,8 @@ namespace SWF
 		uint16_t LineStyle = 0;
 		uint8_t NumFillBits : 4;
 		uint8_t NumLineBits : 4;
+		uint16_t NumNewFillStyles = 0;
+		uint16_t NumNewLineStyles = 0;
 	};
 
 	struct Point
@@ -182,12 +184,14 @@ namespace SWF
 
 	struct Dictionary
 	{
-		uint8_t NumFillBits : 4;
-		uint8_t NumLineBits : 4;
 		FillStyleMap FillStyles;
 		LineStyleMap LineStyles;
 		CharacterDict CharacterList;
 		FrameList Frames;
+
+		uint8_t NumFillBits : 4;
+		uint8_t NumLineBits : 4;
+		uint16_t NewCharOffset = 0;
 	};
 
 	struct Properties

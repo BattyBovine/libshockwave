@@ -98,21 +98,21 @@ Error Parser::tag_loop(Stream *swfstream)
 			case TagType::DefineShape2:
 			case TagType::DefineShape3:
 			{
-				uint16_t shapeid = swfstream->readUI16();
+				uint16_t characterid = swfstream->readUI16();
 				Rect shapebounds = swfstream->readRECT();
-				swfstream->readSHAPEWITHSTYLE(shapeid, shapebounds, rh.tag);
+				swfstream->readSHAPEWITHSTYLE(characterid, shapebounds, rh.tag);
 				break;
 			}
 			case TagType::DefineShape4:
 			{
-				uint16_t shapeid = swfstream->readUI16();
+				uint16_t characterid = swfstream->readUI16();
 				Rect shapebounds = swfstream->readRECT();
 				Rect edgebounds = swfstream->readRECT();
 				swfstream->readUB(5);	// Reserved
 				bool usesfillwindingrule = swfstream->readUB(1);
 				bool usesnonscalingstrokes = swfstream->readUB(1);
 				bool usesscalingstrokes = swfstream->readUB(1);
-				swfstream->readSHAPEWITHSTYLE(shapeid, shapebounds, rh.tag);
+				swfstream->readSHAPEWITHSTYLE(characterid, shapebounds, rh.tag);
 				break;
 			}
 			case TagType::PlaceObject:
@@ -322,13 +322,14 @@ FillStyle inline Stream::readFILLSTYLE(uint16_t tag)
 	return fs;
 }
 
-void inline Stream::readFILLSTYLEARRAY(uint16_t characterid, uint16_t tag)
+uint16_t inline Stream::readFILLSTYLEARRAY(uint16_t characterid, uint16_t tag)
 {
 	uint16_t stylecount = readUI8();	// FillStyleCount
 	if((stylecount==0xFF) && (tag>=TagType::DefineShape2))
 		stylecount = readUI16();
 	for(int i=0; i<stylecount; i++)
 		dict->FillStyles[characterid].push_back(readFILLSTYLE(tag));
+	return stylecount;
 }
 
 LineStyle inline Stream::readLINESTYLE(uint16_t tag)
@@ -366,18 +367,23 @@ LineStyle inline Stream::readLINESTYLE2(uint16_t tag)
 	return ls;
 }
 
-void inline Stream::readLINESTYLEARRAY(uint16_t characterid, uint16_t tag)
+uint16_t inline Stream::readLINESTYLEARRAY(uint16_t characterid, uint16_t tag)
 {
 	uint16_t stylecount = readUI8();	// LineStyleCount
 	if(stylecount==0xFF)
 		stylecount = readUI16();
-	for(int i=0; i<stylecount; i++)
+	for(int i=0; i<stylecount; i++) {
 		if(tag>=TagType::DefineShape4)	dict->LineStyles[characterid].push_back(readLINESTYLE2(tag));
 		else							dict->LineStyles[characterid].push_back(readLINESTYLE(tag));
+	}
+	return stylecount;
 }
 
 void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16_t tag)
 {
+	uint16_t fillbase = 0;	// Offsets for when new fill styles are found mid-shape
+	uint16_t linebase = 0;
+
 	readFILLSTYLEARRAY(characterid, tag);
 	readLINESTYLEARRAY(characterid, tag);
 	dict->NumFillBits = readUB(4);
@@ -400,7 +406,12 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 			penlocation.y = v.anchor.y;
 		} else {
 			StyleChangeRecord change = readSHAPERECORDstylechange(characterid, tag, stateflags);
-			if(!shape.is_empty())	character.shapes.push_back(path_postprocess(shape));
+			if(!shape.is_empty() && shape.vertices.size()>1)
+				character.shapes.push_back(path_postprocess(shape));
+			if(change.NewStylesFlag) {
+				fillbase = this->dict->FillStyles[characterid].size()-change.NumNewFillStyles;
+				linebase = this->dict->LineStyles[characterid].size()-change.NumNewLineStyles;
+			}
 			if(change.MoveDeltaFlag) {
 				penlocation.x = change.MoveDeltaX;
 				penlocation.y = change.MoveDeltaY;
@@ -408,15 +419,19 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 			shape.vertices.clear();
 			Vertex v;
 			v.anchor = penlocation;
-			if(change.FillStyle0Flag)	shape.fill0 = change.FillStyle0;
-			if(change.FillStyle1Flag)	shape.fill1 = change.FillStyle1;
-			if(change.LineStyleFlag)	shape.stroke = change.LineStyle;
+			if(change.FillStyle0Flag)
+				shape.fill0 = (change.FillStyle0 + fillbase);
+			if(change.FillStyle1Flag)
+				shape.fill1 = (change.FillStyle1 + fillbase);
+			if(change.LineStyleFlag)
+				shape.stroke = (change.LineStyle + linebase);
 			shape.vertices.push_back(v);
 		}
 		typeflag = readUB(1);
 		stateflags = readUB(5);
 	}
-	if(!shape.is_empty())	character.shapes.push_back(path_postprocess(shape));
+	if(!shape.is_empty() && shape.vertices.size()>1)
+		character.shapes.push_back(path_postprocess(shape));
 	if(!character.is_empty()) {
 		character.bounds = bounds;
 		dict->CharacterList[characterid] = character;
@@ -461,30 +476,30 @@ StyleChangeRecord inline Stream::readSHAPERECORDstylechange(uint16_t characterid
 {
 	StyleChangeRecord r;
 
-	if(stateflags&0x01) {					// StateMoveTo
+	if(stateflags&0x01) {				// StateMoveTo
 		uint8_t movebits = readUB(5);
 		r.MoveDeltaX = (readSB(movebits)/20.0f);
 		r.MoveDeltaY = (readSB(movebits)/20.0f);
 		r.MoveDeltaFlag = true;
 	}
 
-	if(stateflags&0x02) {					// StateFillStyle0
+	if(stateflags&0x02) {				// StateFillStyle0
 		r.FillStyle0 = readUB(dict->NumFillBits);
 		r.FillStyle0Flag = true;
 	}
-	if(stateflags&0x04) {					// StateFillStyle1
+	if(stateflags&0x04) {				// StateFillStyle1
 		r.FillStyle1 = readUB(dict->NumFillBits);
 		r.FillStyle1Flag = true;
 	}
 
-	if(stateflags&0x08) {					// StateLineStyle
+	if(stateflags&0x08) {				// StateLineStyle
 		r.LineStyle = readUB(dict->NumLineBits);
 		r.LineStyleFlag = true;
 	}
 
-	if(stateflags&0x10) {					// StateNewStyles
-		readFILLSTYLEARRAY(characterid, tag);
-		readLINESTYLEARRAY(characterid, tag);
+	if(stateflags&0x10) {				// StateNewStyles
+		r.NumNewFillStyles = readFILLSTYLEARRAY(characterid, tag);
+		r.NumNewLineStyles = readLINESTYLEARRAY(characterid, tag);
 		dict->NumFillBits = readUB(4);	// NumFillBits
 		dict->NumLineBits = readUB(4);	// NumLineBits
 		r.NewStylesFlag = true;
