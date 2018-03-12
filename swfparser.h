@@ -139,8 +139,6 @@ namespace SWF
 		Vertex inline readSHAPERECORDedge(ShapeRecordType, uint8_t);
 		StyleChangeRecord inline readSHAPERECORDstylechange(uint16_t, uint16_t, uint8_t);
 
-		Shape inline path_postprocess(Shape);
-
 	public:
 		Stream(uint8_t*,uint32_t);
 		void inline seek(uint32_t s){pos=s;}

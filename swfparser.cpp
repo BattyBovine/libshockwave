@@ -406,11 +406,17 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 			penlocation.y = v.anchor.y;
 		} else {
 			StyleChangeRecord change = readSHAPERECORDstylechange(characterid, tag, stateflags);
-			if(!shape.is_empty() && shape.vertices.size()>1)
-				character.shapes.push_back(path_postprocess(shape));
+			if(shape.vertices.size()>1) {
+				shape.closed = (
+					int32_t(round(shape.vertices.front().anchor.x*20.0f))==int32_t(round(shape.vertices.back().anchor.x*20.0f)) &&
+					int32_t(round(shape.vertices.front().anchor.y*20.0f))==int32_t(round(shape.vertices.back().anchor.y*20.0f))
+					);
+				character.shapes.push_back(shape);
+			}
 			if(change.NewStylesFlag) {
 				fillbase = this->dict->FillStyles[characterid].size()-change.NumNewFillStyles;
 				linebase = this->dict->LineStyles[characterid].size()-change.NumNewLineStyles;
+				shape.layer++;
 			}
 			if(change.MoveDeltaFlag) {
 				penlocation.x = change.MoveDeltaX;
@@ -430,8 +436,13 @@ void inline Stream::readSHAPEWITHSTYLE(uint16_t characterid, Rect bounds, uint16
 		typeflag = readUB(1);
 		stateflags = readUB(5);
 	}
-	if(!shape.is_empty() && shape.vertices.size()>1)
-		character.shapes.push_back(path_postprocess(shape));
+	if(shape.vertices.size()>1) {
+		shape.closed = (
+			int32_t(round(shape.vertices.front().anchor.x*20.0f))==int32_t(round(shape.vertices.back().anchor.x*20.0f)) &&
+			int32_t(round(shape.vertices.front().anchor.y*20.0f))==int32_t(round(shape.vertices.back().anchor.y*20.0f))
+			);
+		character.shapes.push_back(shape);
+	}
 	if(!character.is_empty()) {
 		character.bounds = bounds;
 		dict->CharacterList[characterid] = character;
@@ -941,29 +952,4 @@ uint32_t inline Stream::readEncodedU32()
 		}
 	}
 	return result;
-}
-
-
-
-Shape inline Stream::path_postprocess(Shape s)
-{
-	if(s.vertices.size()<3)	return s;
-	s.closed = true;
-	if((!(round(s.vertices.front().anchor.x*100.0f)==round(s.vertices.back().anchor.x*100.0f) &&
-		round(s.vertices.front().anchor.y*100.0f)==round(s.vertices.back().anchor.y*100.0f))))
-		s.closed = false;
-	if(!s.closed)	s.vertices.push_back(s.vertices.front());	// Force a complete shape temporarily to determine winding
-	size_t vsize = s.vertices.size();
-	Vertex *varray = &s.vertices[0];
-	int32_t area = 0;
-	for(uint16_t i=1; i<vsize; i++)
-		area += int32_t(round((varray[i-1].anchor.x*varray[i].anchor.y)-(varray[i].anchor.x*varray[i-1].anchor.y)));
-	if(area > 0)
-		s.winding = Shape::Winding::CLOCKWISE;
-	else if(area < 0)
-		s.winding = Shape::Winding::COUNTERCLOCKWISE;
-	else
-		s.winding = Shape::Winding::NONE;
-	if(!s.closed)	s.vertices.pop_back();	// Don't forget to remove that temp point
-	return s;
 }

@@ -157,13 +157,12 @@ namespace SWF
 	};
 	struct Shape
 	{
-		enum class Winding { NONE, CLOCKWISE, COUNTERCLOCKWISE } winding;
+		uint8_t layer = 0;
 		uint16_t fill0 = 0;
 		uint16_t fill1 = 0;
 		uint16_t stroke = 0;
 		bool closed = false;
 		std::vector<Vertex> vertices;
-		bool is_empty() { return !vertices.size(); }
 	};
 	typedef std::vector<Shape> ShapeList;
 	struct Character
