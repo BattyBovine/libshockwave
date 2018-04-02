@@ -735,22 +735,22 @@ CXForm inline Stream::readCXFORM(bool alpha)
 {
 	reset_bits_pending();
 	CXForm cx;
-	cx.RedAddTerm = cx.GreenAddTerm = cx.BlueAddTerm = cx.AlphaAddTerm = 0;
-	cx.RedMultTerm = cx.GreenMultTerm = cx.BlueMultTerm = cx.AlphaMultTerm = 1.0f;
-	bool hasmultterms = readUB(1);
 	bool hasaddterms = readUB(1);
+	bool hasmultterms = readUB(1);
 	uint8_t nbits = readUB(4);
 	if(hasmultterms) {
-		cx.RedMultTerm = readFB(nbits);
-		cx.GreenMultTerm = readFB(nbits);
-		cx.BlueMultTerm = readFB(nbits);
-		if(alpha)	cx.AlphaMultTerm = readFB(nbits);
+		cx.RedMultTerm = (readSB(nbits)/256.0f);
+		cx.GreenMultTerm = (readSB(nbits)/256.0f);
+		cx.BlueMultTerm = (readSB(nbits)/256.0f);
+		if(alpha)
+			cx.AlphaMultTerm = (readSB(nbits)/256.0f);
 	}
 	if(hasaddterms) {
 		cx.RedAddTerm = readSB(nbits);
 		cx.GreenAddTerm = readSB(nbits);
 		cx.BlueAddTerm = readSB(nbits);
-		if(alpha)	cx.AlphaAddTerm = readSB(nbits);
+		if(alpha)
+			cx.AlphaAddTerm = readSB(nbits);
 	}
 	return cx;
 }

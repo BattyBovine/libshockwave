@@ -67,10 +67,14 @@ namespace SWF
 		float GreenMultTerm = 1.0f;
 		float BlueMultTerm = 1.0f;
 		float AlphaMultTerm = 1.0f;
-		uint8_t RedAddTerm = 0;
-		uint8_t GreenAddTerm = 0;
-		uint8_t BlueAddTerm = 0;
-		uint8_t AlphaAddTerm = 0;
+		int16_t RedAddTerm = 0;
+		int16_t GreenAddTerm = 0;
+		int16_t BlueAddTerm = 0;
+		int16_t AlphaAddTerm = 0;
+		bool IsModified() { return !(
+			(this->RedAddTerm==0 && this->GreenAddTerm==0 && this->BlueAddTerm==0 && this->AlphaAddTerm==0) &&
+			(this->RedMultTerm==1.0f && this->GreenMultTerm==1.0f && this->BlueMultTerm==1.0f && this->AlphaMultTerm==1.0f)
+			); }
 	};
 
 	struct GradRecord
